@@ -13,7 +13,7 @@ export type AccountWithBalance = WalletAccount & {
   transaction_count: number;
 };
 
-export type TransactionType = 'income' | 'expense_personal' | 'expense_business' | 'transfer';
+export type TransactionType = 'income' | 'expense_personal' | 'expense_business' | 'expense' | 'transfer';
 
 export type WalletTransaction = {
   id: string;

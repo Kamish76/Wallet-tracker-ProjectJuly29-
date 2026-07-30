@@ -21,6 +21,7 @@ export function calculateAccountBalance(
       } else if (
         tx.type === 'expense_business' ||
         tx.type === 'expense_personal' ||
+        tx.type === 'expense' ||
         tx.type === 'transfer'
       ) {
         current_balance -= amt;
@@ -61,12 +62,17 @@ export function calculateTotalNetBalance(
   accounts: WalletAccount[],
   transactions: WalletTransaction[]
 ): number {
-  return accounts
+  // 1. Sum of starting_value of all active sub-accounts
+  const totalStartingValue = accounts
     .filter((a) => a.is_active)
-    .reduce((total, acc) => {
-      const { current_balance } = calculateAccountBalance(acc, transactions);
-      return total + current_balance;
-    }, 0);
+    .reduce((total, acc) => total + Number(acc.starting_value || 0), 0);
+
+  // 2. Add all income and subtract all expenses across all transactions in the org
+  // (This ensures that even transactions without an account_id are properly included in Net Balance)
+  const totalIncome = calculateTotalIncome(transactions);
+  const totalExpense = calculateTotalExpense(transactions);
+
+  return totalStartingValue + totalIncome - totalExpense;
 }
 
 export function calculateTotalIncome(transactions: WalletTransaction[]): number {
@@ -77,6 +83,11 @@ export function calculateTotalIncome(transactions: WalletTransaction[]): number 
 
 export function calculateTotalExpense(transactions: WalletTransaction[]): number {
   return transactions
-    .filter((t) => t.type === 'expense_personal' || t.type === 'expense_business')
+    .filter(
+      (t) =>
+        t.type === 'expense_personal' ||
+        t.type === 'expense_business' ||
+        t.type === 'expense'
+    )
     .reduce((sum, t) => sum + Number(t.amount || 0), 0);
 }

@@ -117,16 +117,26 @@ export class SyncEngine {
         let success = false;
 
         if (item.action === 'CREATE_TRANSACTION') {
-          // Send transaction to Supabase
+          // Send transaction to Supabase (sanitizing any legacy non-UUID ids to valid UUIDs or null)
           const txId = isValidUUID(payload.id) ? payload.id : generateUUID();
+          const validAccountId =
+            payload.account_id && isValidUUID(payload.account_id)
+              ? payload.account_id
+              : null;
+          const validTransferToId =
+            payload.transfer_to_account_id &&
+            isValidUUID(payload.transfer_to_account_id)
+              ? payload.transfer_to_account_id
+              : null;
+
           const { error } = await supabase.from('transactions').insert({
             id: txId,
             organization_id: payload.organization_id,
             user_id: payload.user_id,
             type: payload.type,
             amount: payload.amount,
-            account_id: payload.account_id,
-            transfer_to_account_id: payload.transfer_to_account_id || null,
+            account_id: validAccountId,
+            transfer_to_account_id: validTransferToId,
             category: payload.category || null,
             description: payload.description || '',
             created_at: payload.created_at || new Date().toISOString(),
@@ -167,8 +177,7 @@ export class SyncEngine {
           await OfflineDatabase.deleteQueueItem(item.id);
         }
       } catch (e: any) {
-        console.error(`[SyncEngine] Failed to sync queue item ${item.id}:`, e);
-        // If error is 22P02 (invalid UUID), 23505 (duplicate key), or schema invalid syntax, remove item to prevent blocking queue
+        // If error is 22P02 (invalid UUID), 23505 (duplicate key), or schema invalid syntax, remove item to prevent blocking queue without red Metro error
         if (
           e?.code === '22P02' ||
           e?.code === '23505' ||
@@ -177,6 +186,7 @@ export class SyncEngine {
           console.warn(`[SyncEngine] Removing un-retryable queue item ${item.id} (${e.code || e.message})`);
           await OfflineDatabase.deleteQueueItem(item.id);
         } else {
+          console.error(`[SyncEngine] Failed to sync queue item ${item.id}:`, e);
           await OfflineDatabase.updateQueueItemStatus(item.id, 'failed', e?.message || 'Error');
         }
       }
