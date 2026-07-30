@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "OrgWallet",
+    "slug": "orgwallet",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "orgwallet",
+    "splash": {
+      "backgroundColor": "#090A0F"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.orgfinance.orgwallet"
+    },
+    "android": {
+      "package": "com.orgfinance.orgwallet",
+      "adaptiveIcon": {
+        "backgroundColor": "#090A0F"
+      },
+      "permissions": [
+        "ACCESS_NETWORK_STATE",
+        "INTERNET"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
