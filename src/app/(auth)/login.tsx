@@ -9,6 +9,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
@@ -64,6 +65,11 @@ export default function LoginScreen() {
       <View style={styles.content}>
         {/* Branding header matching OrgFinance */}
         <View style={styles.headerContainer}>
+          <Image
+            source={require('../../../assets/icon.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
           <Text style={styles.title}>
             Org<Text style={styles.titleAccent}>Wallet</Text>
           </Text>
@@ -139,6 +145,12 @@ const styles = StyleSheet.create({
   headerContainer: {
     marginBottom: Tokens.spacing.xl,
     alignItems: 'center',
+  },
+  logo: {
+    width: 88,
+    height: 88,
+    borderRadius: 22,
+    marginBottom: Tokens.spacing.md,
   },
   title: {
     fontSize: 36,

@@ -7,6 +7,7 @@ import {
   Switch,
   Alert,
   StyleSheet,
+  Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { RefreshCw, LogOut, Check, Wifi, Database, ShieldAlert } from 'lucide-react-native';
@@ -95,6 +96,11 @@ export default function SettingsScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header */}
       <View style={styles.header}>
+        <Image
+          source={require('../../../assets/icon.png')}
+          style={styles.headerLogo}
+          resizeMode="contain"
+        />
         <Text style={styles.title}>Wallet Settings</Text>
       </View>
 
@@ -265,6 +271,14 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: Tokens.spacing.lg,
     paddingTop: Tokens.spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerLogo: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    marginRight: 12,
   },
   title: {
     ...Tokens.typography.h1,

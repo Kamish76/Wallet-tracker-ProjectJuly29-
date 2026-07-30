@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   StyleSheet,
+  Image,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus } from 'lucide-react-native';
@@ -101,9 +102,16 @@ export default function DashboardScreen() {
       >
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Personal Wallet</Text>
-          <Text style={styles.subtitle}>OrgFinance Mobile Tracker</Text>
+        <View style={styles.headerTitleRow}>
+          <Image
+            source={require('../../../assets/icon.png')}
+            style={styles.headerLogo}
+            resizeMode="contain"
+          />
+          <View>
+            <Text style={styles.title}>Personal Wallet</Text>
+            <Text style={styles.subtitle}>OrgFinance Mobile Tracker</Text>
+          </View>
         </View>
         <TouchableOpacity
           style={styles.syncButton}
@@ -263,6 +271,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Tokens.spacing.lg,
     paddingTop: Tokens.spacing.sm,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerLogo: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    marginRight: 12,
   },
   title: {
     ...Tokens.typography.h1,

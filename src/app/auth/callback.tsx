@@ -16,8 +16,14 @@ export default function AuthCallbackScreen() {
 
     async function handleAuthCallback() {
       try {
-        // 1. Check if Supabase session is already active
+        // 1. Check if Supabase session is already active (retry briefly if login.tsx is currently setting the session)
         let session = await WalletAuthService.getSession();
+        let retries = 0;
+        while (!session && retries < 6) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          session = await WalletAuthService.getSession();
+          retries++;
+        }
 
         // 2. If not active, inspect initial URL or Linking URL
         if (!session) {

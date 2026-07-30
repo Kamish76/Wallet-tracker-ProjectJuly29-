@@ -51,6 +51,7 @@ export class WalletAuthService {
 
   public static async loginWithGoogle() {
     const redirectTo = Linking.createURL('auth/callback');
+    console.log('[WalletAuthService] Google OAuth redirectTo:', redirectTo);
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {

@@ -6,7 +6,10 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "orgwallet",
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
       "backgroundColor": "#090A0F"
     },
     "assetBundlePatterns": [
@@ -14,14 +17,17 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kamish.orgfinance"
+      "bundleIdentifier": "com.kamish.orgfinance",
+      "icon": "./assets/icon.png"
     },
     "android": {
       "package": "com.kamish.orgfinance",
       "versionCode": 1,
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#090A0F"
       },
+      "icon": "./assets/icon.png",
       "permissions": [
         "ACCESS_NETWORK_STATE",
         "INTERNET"
