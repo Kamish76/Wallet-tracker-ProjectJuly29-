@@ -8,8 +8,10 @@ import {
   TextInput,
   Alert,
   StyleSheet,
+  RefreshControl,
 } from 'react-native';
-import { Plus, X, Filter } from 'lucide-react-native';
+import { Plus, X, Filter, RefreshCw } from 'lucide-react-native';
+import { useFocusEffect } from 'expo-router';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
@@ -25,6 +27,7 @@ export default function TransactionsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Form state
   const [txType, setTxType] = useState<TransactionType>('expense_personal');
@@ -56,6 +59,33 @@ export default function TransactionsScreen() {
     }
     init();
   }, [loadLocalData]);
+
+  // 1. Subscribe to SyncEngine notifications so transactions update automatically after sync
+  useEffect(() => {
+    const unsubscribe = SyncEngine.subscribe((queueCount, isSyncing) => {
+      if (!isSyncing && orgId) {
+        loadLocalData(orgId);
+      }
+    });
+    return () => unsubscribe();
+  }, [orgId, loadLocalData]);
+
+  // 2. Refresh data whenever user navigates back to Transactions tab
+  useFocusEffect(
+    useCallback(() => {
+      if (orgId) {
+        loadLocalData(orgId);
+      }
+    }, [orgId, loadLocalData])
+  );
+
+  const handleRefresh = async () => {
+    if (!orgId) return;
+    setRefreshing(true);
+    await SyncEngine.syncNow(orgId);
+    await loadLocalData(orgId);
+    setRefreshing(false);
+  };
 
   const handleAddTransaction = async () => {
     if (!orgId || !userId) return;
@@ -129,13 +159,22 @@ export default function TransactionsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Transactions</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => setModalVisible(true)}
-        >
-          <Plus size={18} color={Colors.background} />
-          <Text style={styles.addButtonText}>Add</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity
+            style={styles.syncButton}
+            onPress={handleRefresh}
+            disabled={refreshing}
+          >
+            <RefreshCw size={18} color={Colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => setModalVisible(true)}
+          >
+            <Plus size={18} color={Colors.background} />
+            <Text style={styles.addButtonText}>Add</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Filter Pills */}
@@ -162,7 +201,16 @@ export default function TransactionsScreen() {
       </View>
 
       {/* Transactions List */}
-      <ScrollView style={styles.listContainer}>
+      <ScrollView
+        style={styles.listContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={Colors.primary}
+          />
+        }
+      >
         {filteredTransactions.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No transactions found</Text>
@@ -383,6 +431,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: Tokens.radius.full,
+  },
+  syncButton: {
+    backgroundColor: Colors.surfaceElevated,
+    padding: Tokens.spacing.sm,
+    borderRadius: Tokens.radius.full,
+    borderWidth: 1,
+    borderColor: Colors.borderGlow,
   },
   addButtonText: {
     fontSize: 14,

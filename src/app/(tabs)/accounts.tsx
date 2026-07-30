@@ -10,6 +10,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Plus, Archive, X, Wallet as WalletIcon } from 'lucide-react-native';
+import { useFocusEffect } from 'expo-router';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
@@ -45,6 +46,25 @@ export default function AccountsScreen() {
     }
     init();
   }, [loadLocalAccounts, showArchived]);
+
+  // 1. Subscribe to SyncEngine notifications so Accounts update automatically after sync
+  useEffect(() => {
+    const unsubscribe = SyncEngine.subscribe((queueCount, isSyncing) => {
+      if (!isSyncing && orgId) {
+        loadLocalAccounts(orgId, showArchived);
+      }
+    });
+    return () => unsubscribe();
+  }, [orgId, showArchived, loadLocalAccounts]);
+
+  // 2. Refresh data whenever user navigates back to Accounts tab
+  useFocusEffect(
+    useCallback(() => {
+      if (orgId) {
+        loadLocalAccounts(orgId, showArchived);
+      }
+    }, [orgId, showArchived, loadLocalAccounts])
+  );
 
   const handleCreateAccount = async () => {
     if (!orgId) return;

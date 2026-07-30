@@ -7,7 +7,7 @@ import {
   RefreshControl,
   StyleSheet,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus } from 'lucide-react-native';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
@@ -48,6 +48,25 @@ export default function DashboardScreen() {
     }
     init();
   }, [loadLocalData]);
+
+  // 1. Subscribe to SyncEngine notifications so Dashboard updates automatically after sync
+  useEffect(() => {
+    const unsubscribe = SyncEngine.subscribe((queueCount, isSyncing) => {
+      if (!isSyncing && orgId) {
+        loadLocalData(orgId);
+      }
+    });
+    return () => unsubscribe();
+  }, [orgId, loadLocalData]);
+
+  // 2. Refresh data whenever user navigates back to Dashboard tab
+  useFocusEffect(
+    useCallback(() => {
+      if (orgId) {
+        loadLocalData(orgId);
+      }
+    }, [orgId, loadLocalData])
+  );
 
   const handleRefresh = async () => {
     if (!orgId) return;

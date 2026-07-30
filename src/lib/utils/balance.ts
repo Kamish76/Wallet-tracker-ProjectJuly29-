@@ -13,7 +13,8 @@ export function calculateAccountBalance(
   let transaction_count = 0;
 
   for (const tx of transactions) {
-    const amt = Number(tx.amount || 0);
+    if (tx.is_initial) continue; // Ignore setup transactions to prevent double-counting starting balances
+    const amt = Math.abs(Number(tx.amount || 0));
     if (tx.account_id === account.id) {
       transaction_count++;
       if (tx.type === 'income') {
@@ -62,13 +63,13 @@ export function calculateTotalNetBalance(
   accounts: WalletAccount[],
   transactions: WalletTransaction[]
 ): number {
-  // 1. Sum of starting_value of all active sub-accounts
-  const totalStartingValue = accounts
-    .filter((a) => a.is_active)
-    .reduce((total, acc) => total + Number(acc.starting_value || 0), 0);
+  // 1. Sum of starting_value of all sub-accounts (Account Starting Balances)
+  const totalStartingValue = accounts.reduce(
+    (total, acc) => total + Number(acc.starting_value || 0),
+    0
+  );
 
-  // 2. Add all income and subtract all expenses across all transactions in the org
-  // (This ensures that even transactions without an account_id are properly included in Net Balance)
+  // 2. Plus Transaction Changes (all non-initial income minus all non-initial expenses)
   const totalIncome = calculateTotalIncome(transactions);
   const totalExpense = calculateTotalExpense(transactions);
 
@@ -77,17 +78,18 @@ export function calculateTotalNetBalance(
 
 export function calculateTotalIncome(transactions: WalletTransaction[]): number {
   return transactions
-    .filter((t) => t.type === 'income')
-    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    .filter((t) => t.type === 'income' && !t.is_initial)
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0);
 }
 
 export function calculateTotalExpense(transactions: WalletTransaction[]): number {
   return transactions
     .filter(
       (t) =>
-        t.type === 'expense_personal' ||
-        t.type === 'expense_business' ||
-        t.type === 'expense'
+        (t.type === 'expense_personal' ||
+          t.type === 'expense_business' ||
+          t.type === 'expense') &&
+        !t.is_initial
     )
-    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0);
 }
