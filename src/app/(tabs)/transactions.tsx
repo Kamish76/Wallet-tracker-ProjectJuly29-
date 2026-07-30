@@ -15,6 +15,7 @@ import { useFocusEffect } from 'expo-router';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
+import { AddTransactionModal } from '@/components/AddTransactionModal';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import { generateUUID } from '@/lib/utils/uuid';
@@ -29,24 +30,12 @@ export default function TransactionsScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Form state
-  const [txType, setTxType] = useState<TransactionType>('expense_personal');
-  const [amount, setAmount] = useState('');
-  const [accountId, setAccountId] = useState('');
-  const [transferToId, setTransferToId] = useState('');
-  const [category, setCategory] = useState('');
-  const [notes, setNotes] = useState('');
-  const [saving, setSaving] = useState(false);
-
   const loadLocalData = useCallback(async (organizationId: string) => {
     const txs = await OfflineDatabase.getTransactions(organizationId, 100);
     const accs = await OfflineDatabase.getAccounts(organizationId);
     setTransactions(txs);
     setAccounts(accs);
-    if (accs.length > 0 && !accountId) {
-      setAccountId(accs[0].id);
-    }
-  }, [accountId]);
+  }, []);
 
   useEffect(() => {
     async function init() {
@@ -87,65 +76,6 @@ export default function TransactionsScreen() {
     setRefreshing(false);
   };
 
-  const handleAddTransaction = async () => {
-    if (!orgId || !userId) return;
-    const numAmount = parseFloat(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      Alert.alert('Invalid Amount', 'Transaction amount must be greater than 0.');
-      return;
-    }
-    if (!accountId) {
-      Alert.alert('No Account', 'Please select a wallet sub-account.');
-      return;
-    }
-    if (txType === 'transfer' && (!transferToId || transferToId === accountId)) {
-      Alert.alert('Invalid Transfer', 'Destination account must be different from source account.');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const newTxId = generateUUID();
-      const now = new Date().toISOString();
-      const newTx: WalletTransaction = {
-        id: newTxId,
-        organization_id: orgId,
-        user_id: userId,
-        type: txType,
-        amount: numAmount,
-        account_id: accountId,
-        transfer_to_account_id: txType === 'transfer' ? transferToId : null,
-        category: category.trim() || null,
-        description: notes.trim() || null,
-        created_at: now,
-        occurred_at: now,
-        sync_status: 'pending',
-      };
-
-      // 1. Write immediately to local SQLite for instant offline reactivity
-      await OfflineDatabase.upsertTransaction(newTx, 'pending');
-
-      // 2. Enqueue mutation in offline sync queue
-      await OfflineDatabase.enqueueMutation('CREATE_TRANSACTION', newTx);
-
-      // 3. Trigger background sync if online
-      if (SyncEngine.getOnlineStatus()) {
-        SyncEngine.syncNow(orgId);
-      }
-
-      // Reset & refresh
-      setAmount('');
-      setCategory('');
-      setNotes('');
-      setModalVisible(false);
-      await loadLocalData(orgId);
-    } catch (error: any) {
-      Alert.alert('Error', error?.message || 'Failed to save transaction.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const filteredTransactions = transactions.filter((tx) => {
     if (filterType === 'all') return true;
     if (filterType === 'income') return tx.type === 'income';
@@ -155,8 +85,9 @@ export default function TransactionsScreen() {
   });
 
   return (
-    <View style={styles.container}>
-      {/* Header */}
+    <View style={{ flex: 1, backgroundColor: Colors.background }}>
+      <View style={styles.container}>
+        {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Transactions</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -261,149 +192,29 @@ export default function TransactionsScreen() {
           ))
         )}
       </ScrollView>
+      </View>
 
-      {/* Offline Quick Add Modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Offline Transaction</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <X size={22} color={Colors.textMuted} />
-              </TouchableOpacity>
-            </View>
+      {/* Floating Add Transaction Button (FAB) at bottom-right */}
+      <TouchableOpacity
+        style={styles.fabButton}
+        onPress={() => setModalVisible(true)}
+        activeOpacity={0.85}
+      >
+        <Plus size={22} color={Colors.background} />
+        <Text style={styles.fabText}>Add Transaction</Text>
+      </TouchableOpacity>
 
-            {/* Type Selector */}
-            <View style={styles.typeSelectorRow}>
-              {(
-                [
-                  { key: 'expense_personal', label: 'Expense' },
-                  { key: 'income', label: 'Income' },
-                  { key: 'transfer', label: 'Transfer' },
-                ] as const
-              ).map((item) => (
-                <TouchableOpacity
-                  key={item.key}
-                  style={[
-                    styles.typeBtn,
-                    txType === item.key && styles.typeBtnActive,
-                  ]}
-                  onPress={() => setTxType(item.key)}
-                >
-                  <Text
-                    style={[
-                      styles.typeBtnText,
-                      txType === item.key && styles.typeBtnTextActive,
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.inputLabel}>Amount ($)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="0.00"
-              placeholderTextColor={Colors.textDim}
-              keyboardType="decimal-pad"
-              value={amount}
-              onChangeText={setAmount}
-            />
-
-            <Text style={styles.inputLabel}>Sub-Account</Text>
-            <View style={styles.accountPickerRow}>
-              {accounts.length === 0 ? (
-                <Text style={{ color: Colors.textMuted, fontStyle: 'italic' }}>
-                  No sub-accounts found. Create one in the Accounts tab!
-                </Text>
-              ) : (
-                accounts.map((a) => (
-                  <TouchableOpacity
-                    key={a.id}
-                    style={[
-                      styles.accPill,
-                      accountId === a.id && styles.accPillActive,
-                    ]}
-                    onPress={() => setAccountId(a.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.accPillText,
-                        accountId === a.id && styles.accPillTextActive,
-                      ]}
-                    >
-                      {a.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))
-              )}
-            </View>
-
-            {txType === 'transfer' && (
-              <>
-                <Text style={styles.inputLabel}>Transfer To</Text>
-                <View style={styles.accountPickerRow}>
-                  {accounts
-                    .filter((a) => a.id !== accountId)
-                    .map((a) => (
-                      <TouchableOpacity
-                        key={a.id}
-                        style={[
-                          styles.accPill,
-                          transferToId === a.id && styles.accPillActive,
-                        ]}
-                        onPress={() => setTransferToId(a.id)}
-                      >
-                        <Text
-                          style={[
-                            styles.accPillText,
-                            transferToId === a.id && styles.accPillTextActive,
-                          ]}
-                        >
-                          {a.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                </View>
-              </>
-            )}
-
-            {txType !== 'transfer' && (
-              <>
-                <Text style={styles.inputLabel}>Category</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. Groceries, Salary, Dining"
-                  placeholderTextColor={Colors.textDim}
-                  value={category}
-                  onChangeText={setCategory}
-                />
-              </>
-            )}
-
-            <Text style={styles.inputLabel}>Notes (Optional)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Optional notes..."
-              placeholderTextColor={Colors.textDim}
-              value={notes}
-              onChangeText={setNotes}
-            />
-
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleAddTransaction}
-              disabled={saving}
-            >
-              <Text style={styles.saveButtonText}>
-                {saving ? 'Saving...' : 'Save to Offline Queue'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* Shared Add Transaction Modal */}
+      <AddTransactionModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onSuccess={() => {
+          if (orgId) loadLocalData(orgId);
+        }}
+        orgId={orgId}
+        userId={userId}
+        accounts={accounts}
+      />
     </View>
   );
 }
@@ -511,6 +322,31 @@ const styles = StyleSheet.create({
   txAmount: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  fabButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: Tokens.radius.full,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 8,
+    zIndex: 100,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  fabText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.background,
+    marginLeft: 8,
   },
   modalOverlay: {
     flex: 1,

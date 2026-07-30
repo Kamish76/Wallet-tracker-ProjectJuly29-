@@ -12,6 +12,7 @@ import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus } from 'lucide-react-nati
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
+import { AddTransactionModal } from '@/components/AddTransactionModal';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import {
@@ -26,6 +27,8 @@ export default function DashboardScreen() {
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
   const loadLocalData = useCallback(async (organizationId: string) => {
     try {
@@ -42,6 +45,7 @@ export default function DashboardScreen() {
     async function init() {
       const session = await WalletAuthService.getSession();
       if (!session?.user) return;
+      setUserId(session.user.id);
       const { organizationId } = await WalletAuthService.resolveUserWallet(session.user.id);
       setOrgId(organizationId);
       await loadLocalData(organizationId);
@@ -82,17 +86,18 @@ export default function DashboardScreen() {
   const totalExpense = calculateTotalExpense(transactions);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          tintColor={Colors.primary}
-        />
-      }
-    >
+    <View style={{ flex: 1, backgroundColor: Colors.background }}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={Colors.primary}
+          />
+        }
+      >
       {/* Header */}
       <View style={styles.header}>
         <View>
@@ -160,7 +165,7 @@ export default function DashboardScreen() {
           </Text>
           <TouchableOpacity
             style={styles.addTransactionButton}
-            onPress={() => router.push('/(tabs)/transactions')}
+            onPress={() => setModalVisible(true)}
           >
             <Plus size={16} color={Colors.background} />
             <Text style={styles.addTransactionButtonText}>Add Offline Transaction</Text>
@@ -211,7 +216,30 @@ export default function DashboardScreen() {
           </View>
         ))
       )}
-    </ScrollView>
+      </ScrollView>
+
+      {/* Floating Add Transaction Button (FAB) at bottom-right */}
+      <TouchableOpacity
+        style={styles.fabButton}
+        onPress={() => setModalVisible(true)}
+        activeOpacity={0.85}
+      >
+        <Plus size={22} color={Colors.background} />
+        <Text style={styles.fabText}>Add Transaction</Text>
+      </TouchableOpacity>
+
+      {/* Shared Add Transaction Modal */}
+      <AddTransactionModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onSuccess={() => {
+          if (orgId) loadLocalData(orgId);
+        }}
+        orgId={orgId}
+        userId={userId}
+        accounts={accounts}
+      />
+    </View>
   );
 }
 
@@ -343,6 +371,31 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.background,
     marginLeft: 6,
+  },
+  fabButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: Tokens.radius.full,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 8,
+    zIndex: 100,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  fabText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.background,
+    marginLeft: 8,
   },
   txCard: {
     ...Tokens.card,
