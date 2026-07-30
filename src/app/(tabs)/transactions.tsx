@@ -90,22 +90,13 @@ export default function TransactionsScreen() {
         {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Transactions</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <TouchableOpacity
-            style={styles.syncButton}
-            onPress={handleRefresh}
-            disabled={refreshing}
-          >
-            <RefreshCw size={18} color={Colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => setModalVisible(true)}
-          >
-            <Plus size={18} color={Colors.background} />
-            <Text style={styles.addButtonText}>Add</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.syncButton}
+          onPress={handleRefresh}
+          disabled={refreshing}
+        >
+          <RefreshCw size={18} color={Colors.primary} />
+        </TouchableOpacity>
       </View>
 
       {/* Filter Pills */}
@@ -235,26 +226,12 @@ const styles = StyleSheet.create({
   title: {
     ...Tokens.typography.h1,
   },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: Tokens.radius.full,
-  },
   syncButton: {
     backgroundColor: Colors.surfaceElevated,
     padding: Tokens.spacing.sm,
     borderRadius: Tokens.radius.full,
     borderWidth: 1,
     borderColor: Colors.borderGlow,
-  },
-  addButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.background,
-    marginLeft: 4,
   },
   filterRow: {
     flexDirection: 'row',
