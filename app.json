@@ -14,10 +14,11 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.orgfinance.orgwallet"
+      "bundleIdentifier": "com.kamish.orgfinance"
     },
     "android": {
-      "package": "com.orgfinance.orgwallet",
+      "package": "com.kamish.orgfinance",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#090A0F"
       },
@@ -33,6 +34,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "bce79d76-1a02-4bc1-b12e-714c0b46f815"
+      }
     }
   }
 }
