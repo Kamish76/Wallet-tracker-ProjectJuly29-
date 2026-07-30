@@ -14,7 +14,7 @@ function isWalletOrganization(description: string | null | undefined, isWalletFl
   return description?.trim().toLowerCase().startsWith(WALLET_MARKER) ?? false;
 }
 
-function extractTokensFromUrl(url: string): { accessToken?: string; refreshToken?: string } {
+export function extractTokensFromUrl(url: string): { accessToken?: string; refreshToken?: string } {
   let accessToken: string | undefined;
   let refreshToken: string | undefined;
   const parts = url.split(/[?#]/);
@@ -114,8 +114,7 @@ export class WalletAuthService {
           id,
           name,
           description,
-          owner_id,
-          is_wallet
+          owner_id
         )
       `)
       .eq('user_id', userId)
@@ -138,12 +137,12 @@ export class WalletAuthService {
     // Step 2: Check owned organizations
     const { data: ownedWallets } = await supabase
       .from('organizations')
-      .select('id, name, description, owner_id, is_wallet')
+      .select('id, name, description, owner_id')
       .eq('owner_id', userId);
 
     if (ownedWallets) {
       for (const org of ownedWallets) {
-        if (isWalletOrganization(org.description, org.is_wallet)) {
+        if (isWalletOrganization(org.description, (org as any).is_wallet)) {
           await SyncEngine.pullLatestData(org.id);
           return { organizationId: org.id, createdNew: false };
         }
@@ -158,7 +157,6 @@ export class WalletAuthService {
         name: 'Personal Wallet',
         description: `${WALLET_MARKER} Personal Wallet`,
         owner_id: userId,
-        is_wallet: true,
       })
       .select('id')
       .single();
