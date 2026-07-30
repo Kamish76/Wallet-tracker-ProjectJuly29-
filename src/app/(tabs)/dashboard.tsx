@@ -14,6 +14,11 @@ import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
+import {
+  calculateTotalNetBalance,
+  calculateTotalIncome,
+  calculateTotalExpense,
+} from '@/lib/utils/balance';
 import type { WalletAccount, WalletTransaction } from '@/types/wallet';
 
 export default function DashboardScreen() {
@@ -25,7 +30,7 @@ export default function DashboardScreen() {
   const loadLocalData = useCallback(async (organizationId: string) => {
     try {
       const localAccs = await OfflineDatabase.getAccounts(organizationId);
-      const localTxs = await OfflineDatabase.getTransactions(organizationId, 10);
+      const localTxs = await OfflineDatabase.getTransactions(organizationId, 500);
       setAccounts(localAccs);
       setTransactions(localTxs);
     } catch (error) {
@@ -52,14 +57,10 @@ export default function DashboardScreen() {
     setRefreshing(false);
   };
 
-  // Calculate totals from accounts & recent transactions
-  const totalBalance = accounts.reduce((sum, a) => sum + (a.starting_value || 0), 0);
-  const totalIncome = transactions
-    .filter((t) => t.type === 'income')
-    .reduce((sum, t) => sum + (t.amount || 0), 0);
-  const totalExpense = transactions
-    .filter((t) => t.type === 'expense_personal' || t.type === 'expense_business')
-    .reduce((sum, t) => sum + (t.amount || 0), 0);
+  // Calculate totals from accounts & all transactions using OrgFinance web app logic
+  const totalBalance = calculateTotalNetBalance(accounts, transactions);
+  const totalIncome = calculateTotalIncome(transactions);
+  const totalExpense = calculateTotalExpense(transactions);
 
   return (
     <ScrollView

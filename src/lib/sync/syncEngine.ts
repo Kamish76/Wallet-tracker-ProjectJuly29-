@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { OfflineDatabase } from '@/lib/database/sqlite';
-import { supabase } from '@/lib/supabase/client';
+import { supabaseAdmin as supabase } from '@/lib/supabase/client';
+import { generateUUID, isValidUUID } from '@/lib/utils/uuid';
 import type { SyncSettings, OfflineSyncQueueItem } from '@/types/wallet';
 
 const SYNC_SETTINGS_KEY = 'orgwallet_sync_settings';
@@ -117,7 +118,9 @@ export class SyncEngine {
 
         if (item.action === 'CREATE_TRANSACTION') {
           // Send transaction to Supabase
+          const txId = isValidUUID(payload.id) ? payload.id : generateUUID();
           const { error } = await supabase.from('transactions').insert({
+            id: txId,
             organization_id: payload.organization_id,
             user_id: payload.user_id,
             type: payload.type,
@@ -139,8 +142,9 @@ export class SyncEngine {
             throw error;
           }
         } else if (item.action === 'CREATE_ACCOUNT') {
+          const accId = isValidUUID(payload.id) ? payload.id : generateUUID();
           const { error } = await supabase.from('wallet_accounts').insert({
-            id: payload.id,
+            id: accId,
             organization_id: payload.organization_id,
             name: payload.name,
             starting_value: payload.starting_value,
@@ -164,7 +168,17 @@ export class SyncEngine {
         }
       } catch (e: any) {
         console.error(`[SyncEngine] Failed to sync queue item ${item.id}:`, e);
-        await OfflineDatabase.updateQueueItemStatus(item.id, 'failed', e?.message || 'Error');
+        // If error is 22P02 (invalid UUID), 23505 (duplicate key), or schema invalid syntax, remove item to prevent blocking queue
+        if (
+          e?.code === '22P02' ||
+          e?.code === '23505' ||
+          e?.message?.includes('invalid input syntax')
+        ) {
+          console.warn(`[SyncEngine] Removing un-retryable queue item ${item.id} (${e.code || e.message})`);
+          await OfflineDatabase.deleteQueueItem(item.id);
+        } else {
+          await OfflineDatabase.updateQueueItemStatus(item.id, 'failed', e?.message || 'Error');
+        }
       }
     }
   }

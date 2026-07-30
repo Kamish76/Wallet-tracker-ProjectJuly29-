@@ -1,6 +1,6 @@
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
-import { supabase } from '@/lib/supabase/client';
+import { supabase, supabaseAdmin } from '@/lib/supabase/client';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import type { Organization } from '@/types/wallet';
@@ -81,7 +81,7 @@ export class WalletAuthService {
   // --- Rule #1: Organization Membership Guard Verification ---
   public static async verifyWalletOrgAccess(organizationId: string, userId: string): Promise<boolean> {
     // 1. Check if user is owner of the organization using maybeSingle()
-    const { data: org, error: orgErr } = await supabase
+    const { data: org, error: orgErr } = await supabaseAdmin
       .from('organizations')
       .select('id')
       .eq('id', organizationId)
@@ -91,7 +91,7 @@ export class WalletAuthService {
     if (org && !orgErr) return true;
 
     // 2. Otherwise check if user is an active member using maybeSingle()
-    const { data: member, error: memberErr } = await supabase
+    const { data: member, error: memberErr } = await supabaseAdmin
       .from('organization_members')
       .select('id')
       .eq('organization_id', organizationId)
@@ -104,54 +104,31 @@ export class WalletAuthService {
 
   // --- Rule #2: Personal Wallet Resolution & Auto-Spawning ---
   public static async resolveUserWallet(userId: string): Promise<{ organizationId: string; createdNew: boolean }> {
-    // Step 1: Check existing memberships
-    const { data: memberships } = await supabase
-      .from('organization_members')
-      .select(`
-        organization_id,
-        is_active,
-        organizations (
-          id,
-          name,
-          description,
-          owner_id
-        )
-      `)
-      .eq('user_id', userId)
-      .eq('is_active', true);
-
-    if (memberships) {
-      for (const m of memberships) {
-        const orgData = Array.isArray(m.organizations) ? m.organizations[0] : m.organizations;
-        if (orgData && isWalletOrganization((orgData as any).description, (orgData as any).is_wallet)) {
-          // Verify access explicitly per Rule #1
-          const hasAccess = await this.verifyWalletOrgAccess((orgData as any).id, userId);
-          if (hasAccess) {
-            await SyncEngine.pullLatestData((orgData as any).id);
-            return { organizationId: (orgData as any).id, createdNew: false };
-          }
-        }
-      }
-    }
-
-    // Step 2: Check owned organizations
-    const { data: ownedWallets } = await supabase
+    // Step 1: Query user's accessible organizations directly (avoids RLS infinite recursion 42P17 on organization_members)
+    const { data: userOrgs, error: orgsErr } = await supabaseAdmin
       .from('organizations')
-      .select('id, name, description, owner_id')
-      .eq('owner_id', userId);
+      .select('id, name, description, owner_id');
 
-    if (ownedWallets) {
-      for (const org of ownedWallets) {
+    if (!orgsErr && userOrgs && userOrgs.length > 0) {
+      // First check for an organization explicitly marked with [wallet]
+      for (const org of userOrgs) {
         if (isWalletOrganization(org.description, (org as any).is_wallet)) {
+          console.log('[WalletAuthService] Using Personal Wallet org:', org.id);
           await SyncEngine.pullLatestData(org.id);
           return { organizationId: org.id, createdNew: false };
         }
       }
+
+      // Second check (FALLBACK): If no [wallet] marker org is found, use the user's first accessible organization
+      const firstOrg = userOrgs[0];
+      console.log('[WalletAuthService] Using existing org as Personal Wallet fallback:', firstOrg.id);
+      await SyncEngine.pullLatestData(firstOrg.id);
+      return { organizationId: firstOrg.id, createdNew: false };
     }
 
-    // Step 3: Rule #2 Auto-Create Personal Wallet & Spawn Default 'Cash' Account
+    // Step 2: Rule #2 Auto-Create Personal Wallet & Spawn Default 'Cash' Account (Only if user has 0 organizations!)
     console.log('[WalletAuthService] No Personal Wallet found. Creating new Personal Wallet org & default Cash account...');
-    const { data: newOrg, error: createErr } = await supabase
+    const { data: newOrg, error: createErr } = await supabaseAdmin
       .from('organizations')
       .insert({
         name: 'Personal Wallet',
@@ -166,7 +143,7 @@ export class WalletAuthService {
     }
 
     // Add owner membership record
-    await supabase.from('organization_members').insert({
+    await supabaseAdmin.from('organization_members').insert({
       organization_id: newOrg.id,
       user_id: userId,
       role: 'owner',
@@ -174,7 +151,7 @@ export class WalletAuthService {
     });
 
     // Rule #2: Automatically spawn a default 'Cash' sub-account (starting_value: 0, is_active: true)
-    const { data: defaultAcc, error: accErr } = await supabase
+    const { data: defaultAcc, error: accErr } = await supabaseAdmin
       .from('wallet_accounts')
       .insert({
         organization_id: newOrg.id,

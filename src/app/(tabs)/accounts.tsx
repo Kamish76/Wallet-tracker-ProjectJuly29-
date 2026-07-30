@@ -15,10 +15,12 @@ import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
-import type { WalletAccount } from '@/types/wallet';
+import { getAccountsWithBalances, type AccountWithBalance } from '@/lib/utils/balance';
+import { generateUUID } from '@/lib/utils/uuid';
+import type { WalletAccount, WalletTransaction } from '@/types/wallet';
 
 export default function AccountsScreen() {
-  const [accounts, setAccounts] = useState<WalletAccount[]>([]);
+  const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [accName, setAccName] = useState('');
@@ -28,7 +30,9 @@ export default function AccountsScreen() {
 
   const loadLocalAccounts = useCallback(async (organizationId: string, archived: boolean) => {
     const list = await OfflineDatabase.getAccounts(organizationId, archived);
-    setAccounts(list);
+    const txs = await OfflineDatabase.getTransactions(organizationId, 500);
+    const withBalances = getAccountsWithBalances(list, txs);
+    setAccounts(withBalances);
   }, []);
 
   useEffect(() => {
@@ -52,7 +56,7 @@ export default function AccountsScreen() {
     setSaving(true);
     try {
       const newAcc: WalletAccount = {
-        id: `acc_local_${Date.now()}`,
+        id: generateUUID(),
         organization_id: orgId,
         name: accName.trim(),
         starting_value: parseFloat(startingVal) || 0,
@@ -153,7 +157,7 @@ export default function AccountsScreen() {
                     {acc.name} {!acc.is_active && '(Archived)'}
                   </Text>
                   <Text style={styles.accValue}>
-                    Starting Value: ${Number(acc.starting_value).toFixed(2)}
+                    Current: ${Number(acc.current_balance || 0).toFixed(2)} • Starting: ${Number(acc.starting_value).toFixed(2)}
                   </Text>
                 </View>
               </View>

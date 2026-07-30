@@ -15,6 +15,7 @@ import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
+import { generateUUID } from '@/lib/utils/uuid';
 import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/wallet';
 
 export default function TransactionsScreen() {
@@ -74,7 +75,7 @@ export default function TransactionsScreen() {
 
     setSaving(true);
     try {
-      const newTxId = `tx_local_${Date.now()}`;
+      const newTxId = generateUUID();
       const now = new Date().toISOString();
       const newTx: WalletTransaction = {
         id: newTxId,
@@ -265,25 +266,31 @@ export default function TransactionsScreen() {
 
             <Text style={styles.inputLabel}>Sub-Account</Text>
             <View style={styles.accountPickerRow}>
-              {accounts.map((a) => (
-                <TouchableOpacity
-                  key={a.id}
-                  style={[
-                    styles.accPill,
-                    accountId === a.id && styles.accPillActive,
-                  ]}
-                  onPress={() => setAccountId(a.id)}
-                >
-                  <Text
+              {accounts.length === 0 ? (
+                <Text style={{ color: Colors.textMuted, fontStyle: 'italic' }}>
+                  No sub-accounts found. Create one in the Accounts tab!
+                </Text>
+              ) : (
+                accounts.map((a) => (
+                  <TouchableOpacity
+                    key={a.id}
                     style={[
-                      styles.accPillText,
-                      accountId === a.id && styles.accPillTextActive,
+                      styles.accPill,
+                      accountId === a.id && styles.accPillActive,
                     ]}
+                    onPress={() => setAccountId(a.id)}
                   >
-                    {a.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        styles.accPillText,
+                        accountId === a.id && styles.accPillTextActive,
+                      ]}
+                    >
+                      {a.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
             </View>
 
             {txType === 'transfer' && (
