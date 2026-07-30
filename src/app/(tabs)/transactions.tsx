@@ -18,6 +18,7 @@ import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { AddTransactionModal } from '@/components/AddTransactionModal';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
+import { getAccountBadgeText } from '@/lib/utils/balance';
 import { generateUUID } from '@/lib/utils/uuid';
 import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/wallet';
 
@@ -159,6 +160,10 @@ export default function TransactionsScreen() {
                     {tx.category || (tx.type === 'transfer' ? 'Transfer' : 'Uncategorized')}
                   </Text>
                   <Text style={styles.txDate}>
+                    <Text style={{ color: Colors.textLight, fontWeight: '600' }}>
+                      {getAccountBadgeText(tx, accounts)}
+                    </Text>
+                    {' • '}
                     {new Date(tx.occurred_at).toLocaleDateString()}
                     {tx.sync_status === 'pending' ? ' • (Offline Pending)' : ''}
                   </Text>

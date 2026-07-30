@@ -19,6 +19,7 @@ import {
   calculateTotalNetBalance,
   calculateTotalIncome,
   calculateTotalExpense,
+  getAccountBadgeText,
 } from '@/lib/utils/balance';
 import type { WalletAccount, WalletTransaction } from '@/types/wallet';
 
@@ -193,6 +194,10 @@ export default function DashboardScreen() {
                   {tx.category || (tx.type === 'transfer' ? 'Transfer' : 'Uncategorized')}
                 </Text>
                 <Text style={styles.txDate}>
+                  <Text style={{ color: Colors.textLight, fontWeight: '600' }}>
+                    {getAccountBadgeText(tx, accounts)}
+                  </Text>
+                  {' • '}
                   {new Date(tx.occurred_at).toLocaleDateString()}
                   {tx.sync_status === 'pending' ? ' • (Offline Pending)' : ''}
                 </Text>

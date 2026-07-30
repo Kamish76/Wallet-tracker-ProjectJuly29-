@@ -93,3 +93,15 @@ export function calculateTotalExpense(transactions: WalletTransaction[]): number
     )
     .reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0);
 }
+
+export function getAccountBadgeText(
+  tx: WalletTransaction,
+  accounts: WalletAccount[]
+): string {
+  const fromAcc = accounts.find((a) => a.id === tx.account_id)?.name || 'Unknown Account';
+  if (tx.type === 'transfer' && tx.transfer_to_account_id) {
+    const toAcc = accounts.find((a) => a.id === tx.transfer_to_account_id)?.name || 'Unknown';
+    return `${fromAcc} → ${toAcc}`;
+  }
+  return fromAcc;
+}
