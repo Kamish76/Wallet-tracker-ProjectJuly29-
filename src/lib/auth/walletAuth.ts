@@ -31,6 +31,14 @@ export function extractTokensFromUrl(url: string): { accessToken?: string; refre
 }
 
 export class WalletAuthService {
+  private static cachedOrgId: string | null = null;
+  private static hasPulledInitialData = false;
+
+  public static clearCache() {
+    this.cachedOrgId = null;
+    this.hasPulledInitialData = false;
+  }
+
   // --- Auth Actions ---
   public static async loginWithEmail(email: string, password: string) {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -70,6 +78,7 @@ export class WalletAuthService {
   }
 
   public static async signOut() {
+    this.clearCache();
     await supabase.auth.signOut();
   }
 
@@ -104,6 +113,16 @@ export class WalletAuthService {
 
   // --- Rule #2: Personal Wallet Resolution & Auto-Spawning ---
   public static async resolveUserWallet(userId: string): Promise<{ organizationId: string; createdNew: boolean }> {
+    if (this.cachedOrgId) {
+      if (!this.hasPulledInitialData) {
+        this.hasPulledInitialData = true;
+        SyncEngine.pullLatestData(this.cachedOrgId).catch((err) =>
+          console.error('[WalletAuthService] Background pull error:', err)
+        );
+      }
+      return { organizationId: this.cachedOrgId, createdNew: false };
+    }
+
     // Step 1: Query user's accessible organizations directly (avoids RLS infinite recursion 42P17 on organization_members)
     const { data: userOrgs, error: orgsErr } = await supabaseAdmin
       .from('organizations')
@@ -114,7 +133,13 @@ export class WalletAuthService {
       for (const org of userOrgs) {
         if (isWalletOrganization(org.description, (org as any).is_wallet)) {
           console.log('[WalletAuthService] Using Personal Wallet org:', org.id);
-          await SyncEngine.pullLatestData(org.id);
+          this.cachedOrgId = org.id;
+          if (!this.hasPulledInitialData) {
+            this.hasPulledInitialData = true;
+            SyncEngine.pullLatestData(org.id).catch((err) =>
+              console.error('[WalletAuthService] Background pull error:', err)
+            );
+          }
           return { organizationId: org.id, createdNew: false };
         }
       }
@@ -122,7 +147,13 @@ export class WalletAuthService {
       // Second check (FALLBACK): If no [wallet] marker org is found, use the user's first accessible organization
       const firstOrg = userOrgs[0];
       console.log('[WalletAuthService] Using existing org as Personal Wallet fallback:', firstOrg.id);
-      await SyncEngine.pullLatestData(firstOrg.id);
+      this.cachedOrgId = firstOrg.id;
+      if (!this.hasPulledInitialData) {
+        this.hasPulledInitialData = true;
+        SyncEngine.pullLatestData(firstOrg.id).catch((err) =>
+          console.error('[WalletAuthService] Background pull error:', err)
+        );
+      }
       return { organizationId: firstOrg.id, createdNew: false };
     }
 
@@ -174,7 +205,11 @@ export class WalletAuthService {
       }, 'synced');
     }
 
-    await SyncEngine.pullLatestData(newOrg.id);
+    this.cachedOrgId = newOrg.id;
+    this.hasPulledInitialData = true;
+    SyncEngine.pullLatestData(newOrg.id).catch((err) =>
+      console.error('[WalletAuthService] Background pull error:', err)
+    );
     return { organizationId: newOrg.id, createdNew: true };
   }
 }

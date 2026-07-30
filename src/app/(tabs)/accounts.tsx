@@ -38,6 +38,10 @@ export default function AccountsScreen() {
 
   useEffect(() => {
     async function init() {
+      if (orgId) {
+        await loadLocalAccounts(orgId, showArchived);
+        return;
+      }
       const session = await WalletAuthService.getSession();
       if (!session?.user) return;
       const { organizationId } = await WalletAuthService.resolveUserWallet(session.user.id);
@@ -45,7 +49,7 @@ export default function AccountsScreen() {
       await loadLocalAccounts(organizationId, showArchived);
     }
     init();
-  }, [loadLocalAccounts, showArchived]);
+  }, [loadLocalAccounts, showArchived, orgId]);
 
   // 1. Subscribe to SyncEngine notifications so Accounts update automatically after sync
   useEffect(() => {
