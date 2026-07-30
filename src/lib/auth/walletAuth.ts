@@ -39,8 +39,19 @@ export class WalletAuthService {
     this.hasPulledInitialData = false;
   }
 
+  public static async clearAllUserData() {
+    this.clearCache();
+    try {
+      await OfflineDatabase.clearAllData();
+      console.log('[WalletAuthService] All local user database data and caches cleared.');
+    } catch (err) {
+      console.error('[WalletAuthService] Failed to clear local database:', err);
+    }
+  }
+
   // --- Auth Actions ---
   public static async loginWithEmail(email: string, password: string) {
+    await this.clearAllUserData();
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -50,6 +61,7 @@ export class WalletAuthService {
   }
 
   public static async loginWithGoogle() {
+    await this.clearAllUserData();
     const redirectTo = Linking.createURL('auth/callback');
     console.log('[WalletAuthService] Google OAuth redirectTo:', redirectTo);
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -79,7 +91,7 @@ export class WalletAuthService {
   }
 
   public static async signOut() {
-    this.clearCache();
+    await this.clearAllUserData();
     await supabase.auth.signOut();
   }
 
@@ -124,10 +136,33 @@ export class WalletAuthService {
       return { organizationId: this.cachedOrgId, createdNew: false };
     }
 
-    // Step 1: Query user's accessible organizations directly (avoids RLS infinite recursion 42P17 on organization_members)
-    const { data: userOrgs, error: orgsErr } = await supabaseAdmin
+    // Step 1: Query organizations owned by this specific userId OR where userId is an active member
+    const { data: ownedOrgs } = await supabaseAdmin
       .from('organizations')
-      .select('id, name, description, owner_id');
+      .select('id, name, description, owner_id')
+      .eq('owner_id', userId);
+
+    const { data: memberRows } = await supabaseAdmin
+      .from('organization_members')
+      .select('organization_id')
+      .eq('user_id', userId)
+      .eq('is_active', true);
+
+    const memberOrgIds = (memberRows || []).map((m) => m.organization_id);
+    let memberOrgs: any[] = [];
+    if (memberOrgIds.length > 0) {
+      const { data: mOrgs } = await supabaseAdmin
+        .from('organizations')
+        .select('id, name, description, owner_id')
+        .in('id', memberOrgIds);
+      if (mOrgs) memberOrgs = mOrgs;
+    }
+
+    const orgMap = new Map<string, any>();
+    (ownedOrgs || []).forEach((o) => orgMap.set(o.id, o));
+    memberOrgs.forEach((o) => orgMap.set(o.id, o));
+    const userOrgs = Array.from(orgMap.values());
+    const orgsErr = null;
 
     if (!orgsErr && userOrgs && userOrgs.length > 0) {
       // First check for an organization explicitly marked with [wallet]

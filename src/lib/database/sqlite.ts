@@ -57,6 +57,18 @@ export class OfflineDatabase {
     `);
   }
 
+  // --- Clear All Local Database Data (for Login/Logout hygiene) ---
+  public static async clearAllData(): Promise<void> {
+    try {
+      const db = await this.getDb();
+      await db.runAsync('DELETE FROM local_transactions;');
+      await db.runAsync('DELETE FROM local_accounts;');
+      await db.runAsync('DELETE FROM offline_sync_queue;');
+    } catch (err) {
+      console.error('[OfflineDatabase] Error clearing local data:', err);
+    }
+  }
+
   // --- Accounts CRUD ---
   public static async upsertAccount(account: WalletAccount, syncStatus: 'synced' | 'pending' = 'synced'): Promise<void> {
     const db = await this.getDb();
@@ -70,14 +82,14 @@ export class OfflineDatabase {
          updated_at = excluded.updated_at,
          sync_status = excluded.sync_status;`,
       [
-        account.id,
-        account.organization_id,
-        account.name,
-        account.starting_value,
+        account.id || null,
+        account.organization_id || null,
+        account.name || null,
+        account.starting_value ?? 0,
         account.is_active ? 1 : 0,
-        account.created_at,
-        account.updated_at,
-        syncStatus,
+        account.created_at || null,
+        account.updated_at || null,
+        syncStatus || 'synced',
       ]
     );
   }
@@ -87,7 +99,7 @@ export class OfflineDatabase {
     const sql = includeArchived
       ? `SELECT * FROM local_accounts WHERE organization_id = ? ORDER BY is_active DESC, name ASC;`
       : `SELECT * FROM local_accounts WHERE organization_id = ? AND is_active = 1 ORDER BY name ASC;`;
-    const rows = await db.getAllAsync<any>(sql, [organizationId]);
+    const rows = await db.getAllAsync<any>(sql, [organizationId || null]);
     return rows.map((r) => ({
       id: r.id,
       organization_id: r.organization_id,
@@ -117,19 +129,19 @@ export class OfflineDatabase {
          description = excluded.description,
          sync_status = excluded.sync_status;`,
       [
-        tx.id,
-        tx.organization_id,
-        tx.user_id,
-        tx.type,
-        tx.amount,
-        tx.account_id,
+        tx.id || null,
+        tx.organization_id || null,
+        tx.user_id || null,
+        tx.type || null,
+        tx.amount ?? 0,
+        tx.account_id || null,
         tx.transfer_to_account_id || null,
         tx.category || null,
         tx.category_id || null,
         tx.description || null,
-        tx.created_at,
-        tx.occurred_at,
-        syncStatus,
+        tx.created_at || null,
+        tx.occurred_at || null,
+        syncStatus || 'synced',
       ]
     );
   }
@@ -165,7 +177,7 @@ export class OfflineDatabase {
     await db.runAsync(
       `INSERT INTO offline_sync_queue (id, action, payload, status, created_at, updated_at)
        VALUES (?, ?, ?, 'pending', ?, ?);`,
-      [id, action, JSON.stringify(payload), now, now]
+      [id || null, action || null, JSON.stringify(payload || {}), now, now]
     );
     return id;
   }
@@ -194,13 +206,13 @@ export class OfflineDatabase {
     const db = await this.getDb();
     await db.runAsync(
       `UPDATE offline_sync_queue SET status = ?, error = ?, updated_at = ? WHERE id = ?;`,
-      [status, error, new Date().toISOString(), id]
+      [status || 'pending', error || null, new Date().toISOString(), id || null]
     );
   }
 
   public static async deleteQueueItem(id: string): Promise<void> {
     const db = await this.getDb();
-    await db.runAsync(`DELETE FROM offline_sync_queue WHERE id = ?;`, [id]);
+    await db.runAsync(`DELETE FROM offline_sync_queue WHERE id = ?;`, [id || null]);
   }
 
   public static async getQueueCount(): Promise<number> {
