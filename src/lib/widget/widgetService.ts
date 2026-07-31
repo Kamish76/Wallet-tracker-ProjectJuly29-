@@ -8,9 +8,27 @@ import React from 'react';
 import { Platform } from 'react-native';
 
 const WIDGET_OPACITY_KEY = '@orgwallet_widget_opacity';
+const WIDGET_LAST_BALANCE_KEY = '@orgwallet_widget_last_balance';
 const DEFAULT_OPACITY = 0.85;
 
 export class WidgetService {
+  public static async getCachedWidgetState(): Promise<{
+    balance: string;
+    opacity: number;
+  }> {
+    const opacity = await this.getOpacity();
+    let balance = 'Loading...';
+    try {
+      const stored = await AsyncStorage.getItem(WIDGET_LAST_BALANCE_KEY);
+      if (stored) {
+        balance = stored;
+      }
+    } catch (err) {
+      console.error('[WidgetService] Error reading cached balance:', err);
+    }
+    return { balance, opacity };
+  }
+
   public static async getOpacity(): Promise<number> {
     try {
       const stored = await AsyncStorage.getItem(WIDGET_OPACITY_KEY);
@@ -61,6 +79,7 @@ export class WidgetService {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         });
+        await AsyncStorage.setItem(WIDGET_LAST_BALANCE_KEY, balanceStr);
       }
     } catch (error) {
       console.error('[WidgetService] Error calculating balance:', error);

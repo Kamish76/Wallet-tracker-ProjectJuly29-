@@ -4,6 +4,9 @@ import { FlexWidget, TextWidget, type ColorProp } from 'react-native-android-wid
 export interface OrgWalletWidgetProps {
   balance: string;
   opacity: number; // 0.10 to 1.00
+  width?: number;
+  height?: number;
+  isLoading?: boolean;
 }
 
 function getAndroidHexColor(opacity: number, baseHex: string = '202020'): ColorProp {
@@ -15,8 +18,28 @@ function getAndroidHexColor(opacity: number, baseHex: string = '202020'): ColorP
   return `#${alphaHex}${baseHex}` as ColorProp;
 }
 
-export function OrgWalletWidget({ balance = '₱0.00', opacity = 0.85 }: OrgWalletWidgetProps) {
+export function OrgWalletWidget({
+  balance = '₱0.00',
+  opacity = 0.85,
+  width = 340,
+  isLoading = false,
+}: OrgWalletWidgetProps) {
   const backgroundColor = getAndroidHexColor(opacity, '202020');
+
+  // Dynamic responsive styling based on Pixel widget width (dp)
+  const isSmall = width < 270; // e.g. 1x3 widget
+  const isLarge = width >= 360; // e.g. 1x5 widget
+
+  const iconSize = isSmall ? 22 : isLarge ? 30 : 26;
+  const balanceFontSize = isSmall ? 16 : isLarge ? 20 : 18;
+  const labelFontSize = isSmall ? 12 : 13;
+  const buttonSpacing = isSmall ? 4 : isLarge ? 6 : 5; // Tightened spacing between buttons
+  const buttonRadius = isSmall ? 14 : isLarge ? 18 : 16;
+  const buttonSize = isSmall ? 44 : isLarge ? 56 : 50; // Bigger square buttons (width === height)
+
+  const displayLabel = isLoading ? 'All accounts • ⌛ Syncing' : 'All accounts';
+  const displayBalance = balance === 'Loading...' ? '⌛ Loading...' : balance;
+  const balanceColor = isLoading && balance === 'Loading...' ? '#93C5FD' : '#FFFFFF';
 
   return (
     <FlexWidget
@@ -27,78 +50,58 @@ export function OrgWalletWidget({ balance = '₱0.00', opacity = 0.85 }: OrgWall
         alignItems: 'center',
         justifyContent: 'space-between',
         backgroundColor,
-        borderRadius: 28,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
+        borderRadius: 24,
+        paddingHorizontal: isSmall ? 12 : 18,
+        paddingVertical: 8,
       }}
     >
-      {/* Left side: Icon + Account label & Balance */}
+      {/* Left side: Account label & Balance (no credit card icon) */}
       <FlexWidget
         style={{
-          flexDirection: 'row',
-          alignItems: 'center',
+          flex: 1,
+          height: 'match_parent',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          marginRight: 8,
         }}
         clickAction="OPEN_URI"
         clickActionData={{
           uri: 'orgwallet://dashboard',
         }}
       >
-        <FlexWidget
+        <TextWidget
+          text={displayLabel}
           style={{
-            width: 38,
-            height: 38,
-            borderRadius: 19,
-            backgroundColor: '#FFFFFF',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: 12,
+            fontSize: labelFontSize,
+            color: isLoading ? '#60A5FA' : '#D1D5DB',
+            fontWeight: isLoading ? 'bold' : 'normal',
           }}
-        >
-          <TextWidget
-            text="💳"
-            style={{
-              fontSize: 20,
-              color: '#000000',
-            }}
-          />
-        </FlexWidget>
-
-        <FlexWidget
+        />
+        <TextWidget
+          text={displayBalance}
           style={{
-            flexDirection: 'column',
-            justifyContent: 'center',
+            fontSize: balanceFontSize,
+            color: balanceColor,
+            fontWeight: 'bold',
           }}
-        >
-          <TextWidget
-            text="All accounts"
-            style={{
-              fontSize: 13,
-              color: '#D1D5DB',
-            }}
-          />
-          <TextWidget
-            text={balance}
-            style={{
-              fontSize: 17,
-              color: '#FFFFFF',
-              fontWeight: 'bold',
-            }}
-          />
-        </FlexWidget>
+        />
       </FlexWidget>
 
-      {/* Right side: Quick Action Buttons (Expense ↑, Income ↓, Transfer ⇄) */}
+      {/* Right side: Three bigger equally square Quick Action buttons with lesser space between them */}
       <FlexWidget
         style={{
           flexDirection: 'row',
           alignItems: 'center',
+          justifyContent: 'flex-end',
         }}
       >
         {/* Add Expense (Red ↑) */}
         <FlexWidget
           style={{
-            paddingHorizontal: 12,
-            paddingVertical: 8,
+            width: buttonSize,
+            height: buttonSize,
+            borderRadius: buttonRadius,
+            backgroundColor: '#2A181C',
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -110,28 +113,21 @@ export function OrgWalletWidget({ balance = '₱0.00', opacity = 0.85 }: OrgWall
           <TextWidget
             text="↑"
             style={{
-              fontSize: 22,
+              fontSize: iconSize,
               color: '#EF4444',
               fontWeight: 'bold',
             }}
           />
         </FlexWidget>
 
-        {/* Divider 1 */}
-        <FlexWidget
-          style={{
-            width: 1,
-            height: 22,
-            backgroundColor: '#404040',
-            marginHorizontal: 4,
-          }}
-        />
-
         {/* Add Income (Green ↓) */}
         <FlexWidget
           style={{
-            paddingHorizontal: 12,
-            paddingVertical: 8,
+            width: buttonSize,
+            height: buttonSize,
+            marginLeft: buttonSpacing,
+            borderRadius: buttonRadius,
+            backgroundColor: '#10281F',
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -143,28 +139,21 @@ export function OrgWalletWidget({ balance = '₱0.00', opacity = 0.85 }: OrgWall
           <TextWidget
             text="↓"
             style={{
-              fontSize: 22,
+              fontSize: iconSize,
               color: '#10B981',
               fontWeight: 'bold',
             }}
           />
         </FlexWidget>
 
-        {/* Divider 2 */}
-        <FlexWidget
-          style={{
-            width: 1,
-            height: 22,
-            backgroundColor: '#404040',
-            marginHorizontal: 4,
-          }}
-        />
-
         {/* Add Transfer (Blue ⇄) */}
         <FlexWidget
           style={{
-            paddingHorizontal: 12,
-            paddingVertical: 8,
+            width: buttonSize,
+            height: buttonSize,
+            marginLeft: buttonSpacing,
+            borderRadius: buttonRadius,
+            backgroundColor: '#142238',
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -176,7 +165,7 @@ export function OrgWalletWidget({ balance = '₱0.00', opacity = 0.85 }: OrgWall
           <TextWidget
             text="⇄"
             style={{
-              fontSize: 22,
+              fontSize: iconSize,
               color: '#3B82F6',
               fontWeight: 'bold',
             }}
