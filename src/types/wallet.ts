@@ -59,7 +59,7 @@ export type SyncMode = 'auto' | 'wifi_only' | 'manual';
 
 export type SyncSettings = {
   mode: SyncMode;
-  intervalMinutes: number; // e.g. 15, 60, 360
+  intervalMinutes: number; // e.g. 15, 360, 720, 1440
   conflictResolution: ConflictResolutionRule;
   autoSyncOnReconnect: boolean;
 };

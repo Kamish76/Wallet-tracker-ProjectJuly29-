@@ -24,7 +24,7 @@ export default function SettingsScreen() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [settings, setSettings] = useState<SyncSettings>({
     mode: 'auto',
-    intervalMinutes: 15,
+    intervalMinutes: 1440,
     conflictResolution: 'local_wins',
     autoSyncOnReconnect: true,
   });
@@ -186,9 +186,9 @@ export default function SettingsScreen() {
         <View style={styles.pillsRow}>
           {(
             [
-              { key: 15, label: '15 mins' },
-              { key: 60, label: '1 hour' },
               { key: 360, label: '6 hours' },
+              { key: 720, label: '12 hours' },
+              { key: 1440, label: '24 hours' },
             ] as const
           ).map((item) => (
             <TouchableOpacity

@@ -8,7 +8,7 @@ const SYNC_SETTINGS_KEY = 'orgwallet_sync_settings';
 
 const DEFAULT_SETTINGS: SyncSettings = {
   mode: 'auto',
-  intervalMinutes: 15,
+  intervalMinutes: 1440, // 24 hours default for maximum battery efficiency
   conflictResolution: 'local_wins',
   autoSyncOnReconnect: true,
 };
