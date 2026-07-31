@@ -38,6 +38,10 @@ export function OrgWalletWidget({ balance = '₱0.00', opacity = 0.85 }: OrgWall
           flexDirection: 'row',
           alignItems: 'center',
         }}
+        clickAction="OPEN_URI"
+        clickActionData={{
+          uri: 'orgwallet://dashboard',
+        }}
       >
         <FlexWidget
           style={{
@@ -100,7 +104,7 @@ export function OrgWalletWidget({ balance = '₱0.00', opacity = 0.85 }: OrgWall
           }}
           clickAction="OPEN_URI"
           clickActionData={{
-            uri: 'orgwallet://action/add-transaction?type=expense_personal',
+            uri: 'orgwallet://dashboard?type=expense_personal',
           }}
         >
           <TextWidget
@@ -133,7 +137,7 @@ export function OrgWalletWidget({ balance = '₱0.00', opacity = 0.85 }: OrgWall
           }}
           clickAction="OPEN_URI"
           clickActionData={{
-            uri: 'orgwallet://action/add-transaction?type=income',
+            uri: 'orgwallet://dashboard?type=income',
           }}
         >
           <TextWidget
@@ -166,7 +170,7 @@ export function OrgWalletWidget({ balance = '₱0.00', opacity = 0.85 }: OrgWall
           }}
           clickAction="OPEN_URI"
           clickActionData={{
-            uri: 'orgwallet://action/add-transaction?type=transfer',
+            uri: 'orgwallet://dashboard?type=transfer',
           }}
         >
           <TextWidget

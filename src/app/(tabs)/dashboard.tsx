@@ -8,7 +8,7 @@ import {
   StyleSheet,
   Image,
 } from 'react-native';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus } from 'lucide-react-native';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
@@ -34,6 +34,19 @@ export default function DashboardScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [initialModalTxType, setInitialModalTxType] = useState<TransactionType | undefined>(undefined);
   const deepLinkUrl = Linking.useURL();
+  const { type: paramTxType } = useLocalSearchParams<{ type?: string }>();
+
+  useEffect(() => {
+    if (
+      paramTxType === 'expense_personal' ||
+      paramTxType === 'income' ||
+      paramTxType === 'transfer'
+    ) {
+      setInitialModalTxType(paramTxType as TransactionType);
+      setModalVisible(true);
+      router.setParams({ type: undefined });
+    }
+  }, [paramTxType]);
 
   useEffect(() => {
     if (!deepLinkUrl) return;
