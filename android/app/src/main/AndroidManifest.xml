@@ -29,7 +29,7 @@
         <data android:scheme="orgwallet"/>
       </intent-filter>
     </activity>
-    <receiver android:name=".widget.OrgWalletBalance" android:exported="false" android:label="OrgWallet Balance &amp; Quick Actions">
+    <receiver android:name=".widget.OrgWalletBalance" android:exported="true" android:label="OrgWallet Balance &amp; Quick Actions">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
         <action android:name="com.kamish.orgfinance.WIDGET_CLICK"/>
