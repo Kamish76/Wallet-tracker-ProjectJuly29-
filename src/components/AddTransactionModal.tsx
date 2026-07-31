@@ -14,6 +14,7 @@ import { SyncEngine } from '@/lib/sync/syncEngine';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import { generateUUID } from '@/lib/utils/uuid';
+import { WidgetService } from '@/lib/widget/widgetService';
 import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/wallet';
 
 interface AddTransactionModalProps {
@@ -23,6 +24,7 @@ interface AddTransactionModalProps {
   orgId: string | null;
   userId: string | null;
   accounts: WalletAccount[];
+  initialType?: TransactionType;
 }
 
 export function AddTransactionModal({
@@ -32,6 +34,7 @@ export function AddTransactionModal({
   orgId,
   userId,
   accounts,
+  initialType,
 }: AddTransactionModalProps) {
   const [txType, setTxType] = useState<TransactionType>('expense_personal');
   const [amount, setAmount] = useState('');
@@ -42,10 +45,15 @@ export function AddTransactionModal({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (visible && accounts.length > 0 && !accountId) {
-      setAccountId(accounts[0].id);
+    if (visible) {
+      if (initialType) {
+        setTxType(initialType);
+      }
+      if (accounts.length > 0 && !accountId) {
+        setAccountId(accounts[0].id);
+      }
     }
-  }, [visible, accounts, accountId]);
+  }, [visible, accounts, accountId, initialType]);
 
   const resetForm = () => {
     setAmount('');
@@ -102,6 +110,9 @@ export function AddTransactionModal({
       if (SyncEngine.getOnlineStatus()) {
         SyncEngine.syncNow(orgId);
       }
+
+      // 4. Update Android home screen widget immediately
+      WidgetService.refreshWidgetData(orgId || undefined).catch(() => {});
 
       resetForm();
       onSuccess();

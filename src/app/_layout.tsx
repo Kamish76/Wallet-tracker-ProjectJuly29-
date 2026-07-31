@@ -1,11 +1,22 @@
 import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { registerWidgetTaskHandler } from 'react-native-android-widget';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
+import { WidgetService } from '@/lib/widget/widgetService';
+import { widgetTaskHandler } from '@/widgets/widgetTaskHandler';
 import { Colors } from '@/theme/colors';
+
+if (Platform.OS === 'android') {
+  try {
+    registerWidgetTaskHandler(widgetTaskHandler);
+  } catch (err) {
+    console.log('[RootLayout] Notice: widget task handler registration:', err);
+  }
+}
 
 export default function RootLayout() {
   useEffect(() => {
@@ -16,6 +27,11 @@ export default function RootLayout() {
 
     // Initial check for online status
     SyncEngine.setNetworkStatus(true);
+
+    // Refresh Android widget on app launch
+    if (Platform.OS === 'android') {
+      WidgetService.refreshWidgetData().catch(() => {});
+    }
   }, []);
 
   return (

@@ -120,6 +120,49 @@ npx -y eas-cli build --platform android --profile production
    - **Free or paid**: **Free**.
    - Accept the Developer Program Policies and click **Create app**.
 
+3. **Main Store Listing (Copy & Paste Template)**:
+   - Go to **Grow users -> Store presence -> Main store listing** in the left sidebar.
+   - Use the following pre-formatted copy for your store listing:
+
+   **App Name (Max 30 characters):**
+   ```text
+   OrgWallet - Finance Tracker
+   ```
+
+   **Short Description (Max 80 characters):**
+   ```text
+   Track personal budgets, live home screen widgets & organization finances.
+   ```
+
+   **Full Description (Max 4,000 characters):**
+   ```text
+   OrgWallet is the official mobile companion app for OrgFinance, designed to bring personal wealth tracking and multi-tenant business financial management together in one modern, seamless workspace.
+
+   Whether you are tracking daily coffee expenses in your Personal Wallet or monitoring cash flow across shared organization budgets, OrgWallet gives you real-time visibility and control—wherever you go.
+
+   KEY FEATURES:
+
+   • LIVE ANDROID HOME SCREEN WIDGET
+   Check your total net balance and jump straight into logging an Income, Expense, or Transfer from your phone's home screen. Customize the widget's background opacity for a sleek, translucent look that matches your wallpaper.
+
+   • PERSONAL WALLET MODE
+   Effortlessly manage your personal finances with dedicated sub-accounts for Cash, Bank Accounts, Savings, and Credit Cards. Easily log daily income and expenses with automatic balance calculation.
+
+   • MULTI-TENANT WORKSPACES
+   Seamlessly switch between your private Personal Wallet and shared business organizations. Collaborate with team members, track group expenses, and maintain separate financial records without cluttering your personal data.
+
+   • OFFLINE-FIRST RELIABILITY
+   Built with an ultra-fast local SQLite cache, OrgWallet lets you view balances and log transactions even when you have poor network connectivity. Your changes automatically sync to secure cloud servers the moment you come back online.
+
+   • REAL-TIME SYNCHRONIZATION
+   Powered by Supabase cloud infrastructure, your personal wallets and organization ledgers stay perfectly synchronized across your mobile devices and the web dashboard.
+
+   • BANK-GRADE SECURITY & PRIVACY
+   Your authentication credentials and tokens are safeguarded using encrypted device secure storage. OrgWallet respects your data privacy with built-in GDPR/CCPA compliance and self-service account deletion tools.
+
+   Take control of your personal wealth and organization finances today with OrgWallet!
+   ```
+
 ---
 
 ## 5. Completing App Content & Data Safety

@@ -14,6 +14,8 @@ import { RefreshCw, LogOut, Check, Wifi, Database, ShieldAlert } from 'lucide-re
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { OfflineDatabase } from '@/lib/database/sqlite';
+import { WidgetService } from '@/lib/widget/widgetService';
+import Slider from '@react-native-community/slider';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import type { SyncSettings, SyncMode, ConflictResolutionRule } from '@/types/wallet';
@@ -28,6 +30,9 @@ export default function SettingsScreen() {
   });
   const [pendingCount, setPendingCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [widgetOpacity, setWidgetOpacity] = useState(0.85);
+  const [widgetBalance, setWidgetBalance] = useState('$0.00');
+  const [updatingWidget, setUpdatingWidget] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -37,6 +42,10 @@ export default function SettingsScreen() {
       setSettings(st);
       const count = await OfflineDatabase.getQueueCount();
       setPendingCount(count);
+
+      const { opacity, balance } = await WidgetService.getWidgetState();
+      setWidgetOpacity(opacity);
+      setWidgetBalance(balance);
     }
     load();
 
@@ -90,6 +99,20 @@ export default function SettingsScreen() {
         },
       },
     ]);
+  };
+
+  const handleUpdateWidgetOpacity = async (val: number) => {
+    setWidgetOpacity(val);
+    await WidgetService.setOpacity(val);
+  };
+
+  const handleRefreshWidgetNow = async () => {
+    setUpdatingWidget(true);
+    await WidgetService.refreshWidgetData();
+    const { opacity, balance } = await WidgetService.getWidgetState();
+    setWidgetOpacity(opacity);
+    setWidgetBalance(balance);
+    setUpdatingWidget(false);
   };
 
   return (
@@ -244,6 +267,91 @@ export default function SettingsScreen() {
           <RefreshCw size={18} color={Colors.background} />
           <Text style={styles.syncNowButtonText}>
             {syncing ? 'Synchronizing...' : 'Sync Now'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Home Screen Widget Card */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Home Screen Widget</Text>
+        <Text style={styles.cardDescription}>
+          Customize the background opacity of your Android home screen widget.
+        </Text>
+
+        {/* Live Preview Banner */}
+        <View style={styles.previewContainer}>
+          <Text style={styles.previewLabel}>LIVE PREVIEW</Text>
+          <View
+            style={[
+              styles.widgetPreviewBanner,
+              { backgroundColor: `rgba(32, 32, 32, ${widgetOpacity})` },
+            ]}
+          >
+            <View style={styles.widgetPreviewLeft}>
+              <View style={styles.widgetPreviewIcon}>
+                <Text style={{ fontSize: 16 }}>💳</Text>
+              </View>
+              <View>
+                <Text style={styles.widgetPreviewSubtext}>All accounts</Text>
+                <Text style={styles.widgetPreviewBalance}>{widgetBalance}</Text>
+              </View>
+            </View>
+            <View style={styles.widgetPreviewRight}>
+              <Text style={{ fontSize: 18, color: '#EF4444', fontWeight: 'bold' }}>↑</Text>
+              <View style={styles.widgetPreviewDivider} />
+              <Text style={{ fontSize: 18, color: '#10B981', fontWeight: 'bold' }}>↓</Text>
+              <View style={styles.widgetPreviewDivider} />
+              <Text style={{ fontSize: 18, color: '#3B82F6', fontWeight: 'bold' }}>⇄</Text>
+            </View>
+          </View>
+        </View>
+
+        <Text style={styles.fieldLabel}>
+          Background Opacity: {Math.round(widgetOpacity * 100)}%
+        </Text>
+        <Slider
+          style={{ width: '100%', height: 40, marginTop: 4 }}
+          minimumValue={0.1}
+          maximumValue={1.0}
+          step={0.05}
+          value={widgetOpacity}
+          onValueChange={(val) => setWidgetOpacity(val)}
+          onSlidingComplete={handleUpdateWidgetOpacity}
+          minimumTrackTintColor={Colors.primary}
+          maximumTrackTintColor={Colors.border}
+          thumbTintColor={Colors.textWhite}
+        />
+
+        {/* Preset Pills */}
+        <View style={styles.pillsRow}>
+          {[0.25, 0.5, 0.75, 0.85, 1.0].map((preset) => (
+            <TouchableOpacity
+              key={preset}
+              style={[
+                styles.pill,
+                Math.abs(widgetOpacity - preset) < 0.03 && styles.pillActive,
+              ]}
+              onPress={() => handleUpdateWidgetOpacity(preset)}
+            >
+              <Text
+                style={[
+                  styles.pillText,
+                  Math.abs(widgetOpacity - preset) < 0.03 && styles.pillTextActive,
+                ]}
+              >
+                {Math.round(preset * 100)}%
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <TouchableOpacity
+          style={styles.syncNowButton}
+          onPress={handleRefreshWidgetNow}
+          disabled={updatingWidget}
+        >
+          <Text style={styles.syncNowButtonText}>
+            {updatingWidget ? 'Updating Widget...' : 'Push Update to Home Screen'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -418,4 +526,61 @@ const styles = StyleSheet.create({
     color: Colors.textDim,
     textAlign: 'center',
   },
+  previewContainer: {
+    marginVertical: Tokens.spacing.md,
+    backgroundColor: '#0F1117',
+    borderRadius: Tokens.radius.md,
+    padding: Tokens.spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  previewLabel: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    letterSpacing: 0.8,
+    marginBottom: Tokens.spacing.sm,
+  },
+  widgetPreviewBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 28,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  widgetPreviewLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  widgetPreviewIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  widgetPreviewSubtext: {
+    fontSize: 12,
+    color: '#D1D5DB',
+  },
+  widgetPreviewBalance: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  widgetPreviewRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  widgetPreviewDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: '#404040',
+  },
 });
+

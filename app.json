@@ -36,7 +36,24 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "OrgWalletBalance",
+              "label": "OrgWallet Balance & Quick Actions",
+              "minWidth": "250dp",
+              "minHeight": "60dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 1,
+              "description": "Quickly view your balance and add transactions",
+              "previewImage": "./assets/icon.png"
+            }
+          ]
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

@@ -16,13 +16,14 @@ import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { AddTransactionModal } from '@/components/AddTransactionModal';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
+import * as Linking from 'expo-linking';
 import {
   calculateTotalNetBalance,
   calculateTotalIncome,
   calculateTotalExpense,
   getAccountBadgeText,
 } from '@/lib/utils/balance';
-import type { WalletAccount, WalletTransaction } from '@/types/wallet';
+import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/wallet';
 
 export default function DashboardScreen() {
   const [accounts, setAccounts] = useState<WalletAccount[]>([]);
@@ -31,6 +32,31 @@ export default function DashboardScreen() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [initialModalTxType, setInitialModalTxType] = useState<TransactionType | undefined>(undefined);
+  const deepLinkUrl = Linking.useURL();
+
+  useEffect(() => {
+    if (!deepLinkUrl) return;
+    try {
+      const parsed = Linking.parse(deepLinkUrl);
+      if (
+        (parsed.scheme === 'orgwallet' || parsed.path?.includes('add-transaction')) &&
+        parsed.queryParams?.type
+      ) {
+        const txTypeParam = parsed.queryParams.type as string;
+        if (
+          txTypeParam === 'expense_personal' ||
+          txTypeParam === 'income' ||
+          txTypeParam === 'transfer'
+        ) {
+          setInitialModalTxType(txTypeParam as TransactionType);
+          setModalVisible(true);
+        }
+      }
+    } catch (e) {
+      console.log('[Dashboard] Error parsing widget deep link:', e);
+    }
+  }, [deepLinkUrl]);
 
   const loadLocalData = useCallback(async (organizationId: string) => {
     try {
@@ -244,13 +270,17 @@ export default function DashboardScreen() {
       {/* Shared Add Transaction Modal */}
       <AddTransactionModal
         visible={modalVisible}
-        onClose={() => setModalVisible(false)}
+        onClose={() => {
+          setModalVisible(false);
+          setInitialModalTxType(undefined);
+        }}
         onSuccess={() => {
           if (orgId) loadLocalData(orgId);
         }}
         orgId={orgId}
         userId={userId}
         accounts={accounts}
+        initialType={initialModalTxType}
       />
     </View>
   );
