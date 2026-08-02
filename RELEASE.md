@@ -1,13 +1,13 @@
-# OrgWallet - Release Notes & Google Play Console Guide (v0.2.0)
+# OrgWallet - Release Notes & Google Play Console Guide (v0.3.0)
 
-This document serves as the official **Release Notes** for **OrgWallet v0.2.0** (and a comprehensive summary of all changes since the initial release v0.1.0) as well as an end-to-end guide for releasing **OrgWallet v0.2.0** on the Google Play Store using Expo Application Services (EAS) and the Google Play Console.
+This document serves as the official **Release Notes** for **OrgWallet v0.3.0** (and a comprehensive summary of all changes since the initial release v0.1.0) as well as an end-to-end guide for releasing **OrgWallet v0.3.0** on the Google Play Store using Expo Application Services (EAS) and the Google Play Console.
 
 ---
 
 ## 📋 Table of Contents
 
-1. [Release Notes — OrgWallet v0.2.0 (Live Home Screen Widget & Custom Branding)](#1-release-notes--orgwallet-v020-live-home-screen-widget--custom-branding)
-2. [Summary of Changes Since Initial Release (v0.1.0 to v0.2.0)](#2-summary-of-changes-since-initial-release-v010-to-v020)
+1. [Release Notes — OrgWallet v0.3.0 (Offline Transaction & Sub-Account Management)](#1-release-notes--orgwallet-v030-offline-transaction--sub-account-management)
+2. [Summary of Changes Since Initial Release (v0.1.0 to v0.3.0)](#2-summary-of-changes-since-initial-release-v010-to-v030)
 3. [Prerequisites & EAS Configuration](#3-prerequisites--eas-configuration)
 4. [Required Assets for Google Play Console](#4-required-assets-for-google-play-console)
 5. [Building the Android App Bundle (.aab)](#5-building-the-android-app-bundle-aab)
@@ -18,55 +18,49 @@ This document serves as the official **Release Notes** for **OrgWallet v0.2.0** 
 
 ---
 
-## 1. Release Notes — OrgWallet v0.2.0 (Live Home Screen Widget & Custom Branding)
+## 1. Release Notes — OrgWallet v0.3.0 (Offline Transaction & Sub-Account Management)
 
-**Release Version:** `v0.2.0`  
-**Android Version Code:** `2`  
-**Release Date:** July 31, 2026  
+**Release Version:** `v0.3.0`  
+**Android Version Code:** `4`  
+**Release Date:** August 3, 2026  
 
 ### 🌟 Overview
-**OrgWallet v0.2.0** marks a major leap forward in accessibility, personalization, and brand identity. While **v0.1.0** established our offline-first local SQLite caching engine and Personal Wallet multi-account architecture, **v0.2.0** brings financial tracking directly to the user's Android home screen. With real-time **Net Balance Home Screen Widgets**, **1-Tap Quick Action Shortcuts**, custom **Wallpaper Translucency** controls, and a complete **Visual Branding** overhaul, OrgWallet is faster, more responsive, and more integrated into the Android ecosystem than ever before.
+**OrgWallet v0.3.0** represents a milestone release in user empowerment, offline ledger autonomy, and data integrity. While **v0.2.0** brought OrgWallet to the Android Home Screen with real-time Net Balance Widgets, **v0.3.0** delivers full end-to-end **offline CRUD management** for both **transactions** and **sub-accounts**. Users can now edit, re-categorize, adjust balances, and archive or delete transactions and sub-accounts completely offline—with guaranteed local SQLite persistence and automatic background cloud synchronization via our upgraded bidirectional `SyncEngine`.
 
 ---
 
-### 🔥 Key Highlights in v0.2.0
+### 🔥 Key Highlights in v0.3.0
 
-#### 1. 📱 Live Android Home Screen Widget (`OrgWalletBalance`)
-- **Real-Time Balance Display**: Users can now monitor their **Total Net Balance** directly from their Android phone home screen without opening the app.
-- **Background Sync Integration**: Powered by custom background task handlers (`widgetTaskHandler.ts` & `widgetService.ts`), the home screen widget automatically refreshes whenever accounts or transactions mutate locally or via background cloud sync.
-- **Native Android AnyDPI Layouts**: Designed using native XML and Kotlin/Java bindings (`widget_initial_layout.xml`, `widgetprovider_orgwalletbalance.xml`) for crisp rendering across all screen sizes and launchers.
+#### 1. 📝 Full Offline-First Transaction Editing & Deletion
+- **Comprehensive Transaction Editor Modal**: Built `EditTransactionModal` (`src/components/EditTransactionModal.tsx`, 631 lines) supporting instant editing of transaction amounts, titles, preset or custom categories, assigned sub-accounts, dates/times, notes, and transaction types (`income`, `expense`, `transfer`).
+- **Dynamic Local Recalculation**: Modifying or deleting any transaction immediately recalculates net balance and individual sub-account balances locally in SQLite, instantly refreshing both the mobile UI and Android home screen widget.
+- **Bidirectional Offline Queue Synchronization**: Added `UPDATE_TRANSACTION` and `DELETE_TRANSACTION` actions in `SyncEngine.processQueueItem()`, guaranteeing that changes made offline automatically synchronize with Supabase upon reconnection.
+- **Enhanced Dashboard & Transactions UI**: Integrated quick-action cards, category badges, account names, and 1-tap edit/delete modal triggers across `/dashboard` and `/transactions`.
 
-#### 2. ⚡ 1-Tap Quick Action Shortcuts on Widget
-- **Instant Transaction Deep Linking**: The Home Screen Widget features dedicated quick-action buttons for **`+ Expense`**, **`+ Income`**, and **`+ Transfer`**.
-- **Dedicated Modal Route (`/action/add-transaction`)**: Tapping any widget shortcut opens OrgWallet directly to a standalone modal with the transaction type pre-selected, enabling users to log financial activity in seconds.
+#### 2. 🏦 Full Offline-First Sub-Account Editing & Deletion
+- **Interactive Account Editor (`/accounts`)**: Engineered a dedicated sub-account management modal allowing users to edit account names, account types (`Cash`, `Bank`, `Credit Card`, `Digital Wallet`, `Investment`), starting balances, currencies, and descriptions.
+- **Real-Time Starting Balance Adjustments**: Changing an account's starting balance automatically recomputes current balances locally without requiring a manual server sync.
+- **Rule #2 Enforcement (Account Deletion Safeguard)**: Implemented local safety verification using `getAccountTransactionsCount(id)`. If an account is referenced by existing transactions, hard deletion is blocked and the user is guided to safely archive (`is_active = false`) the account instead, protecting historical ledger integrity.
+- **Offline Account Sync Queue**: Added `UPDATE_ACCOUNT` and `DELETE_ACCOUNT` actions with automatic retry and conflict resolution policies.
 
-#### 3. 🎨 Custom Wallpaper Translucency & Opacity Slider
-- **Tailored Aesthetics**: In the newly added **Settings** screen (`/settings`), users can customize the widget background translucency to blend seamlessly with their phone wallpaper.
-- **Interactive Slider & Live Preview**: Features an interactive slider (`@react-native-community/slider`) ranging from 20% to 100% opacity (`0.2` to `1.0`), accompanied by a live on-screen preview card showing real-time formatted balances.
+#### 3. 🔒 SQLite FIFO Mutex Serialization (`withLock`) & Concurrency Stability
+- **Thread-Safe SQLite Operations**: Wrapped all new transaction and sub-account CRUD and count methods (`getAccountTransactionsCount`, `updateTransaction`, `deleteTransaction`, `updateAccount`, `deleteAccount`) in asynchronous FIFO mutex locks (`withLock`).
+- **Zero JNI Collision Guarantee**: Eliminates native Android statement preparation exceptions when concurrent async queries from UI renders, `SyncEngine.syncNow`, and `WidgetService.refreshWidgetData` overlap.
 
-#### 4. ⚙️ Advanced Offline Sync Management (`/settings`)
-- **Configurable Sync Modes**: Choose between **Auto** (real-time background sync), **Manual**, or **Scheduled** (every 15 minutes, 60 minutes, or Daily / 24 hours).
-- **Conflict Resolution Control**: Users can set their preferred mutation conflict policy (`local_wins`, `server_wins`, or `ask_user`).
-- **Queue Monitor & Manual Trigger**: Displays a live counter of pending offline transactions and accounts, with a dedicated **Sync Now** button that provides immediate alert feedback upon completion.
-
-#### 5. 🌟 Full Production Branding & Visual Identity
-- **Custom App & Adaptive Launcher Icons**: Replaced all default Expo placeholder graphics with a production **App Icon** (`assets/icon.png`), **Adaptive Launcher Icon** (`assets/adaptive-icon.png`), and **Favicon**.
-- **Multi-Density Splash Screen Assets**: Integrated branded splash screen drawables across all Android density buckets (`hdpi`, `mdpi`, `xhdpi`, `xxhdpi`, `xxxhdpi`) for a polished startup experience.
-- **UI Logo Enhancements**: Added clean brand headers across Auth (`login.tsx`, `callback.tsx`) and Navigation screens.
-
-#### 6. ☕ Native Windows Build & OpenJDK 21 Compatibility Fix
-- **Java 25 (Major Version 69) Automated Fix**: Resolved Gradle 8.14.3 incompatibility with Windows system Java 25 (`W:\Dev\JDK`) by configuring `org.gradle.java.home=W:/Dev/Android/Android Studio/jbr` in `android/gradle.properties` to target OpenJDK 21.
-- **Production Release Keystore**: Added automated release signing configuration (`release.keystore`) ensuring all `.aab` bundles and `.apk` files are signed in production Release Mode.
+#### 4. ⚙️ Settings Version Display & Release Tracking
+- **Accurate Build Tracking**: Updated the About section in **Settings** (`/settings`) to dynamically display **`OrgWallet v0.3.0`**, ensuring accurate release identification for users and testers.
+- **Android System Java 25 / OpenJDK 21 Alignment**: Verified and maintained Gradle compatibility for command-line (`gradlew.bat`) and IDE builds using Android Studio's bundled OpenJDK 21 (`W:/Dev/Android/Android Studio/jbr`).
 
 ---
 
-## 2. Summary of Changes Since Initial Release (v0.1.0 to v0.2.0)
+## 2. Summary of Changes Since Initial Release (v0.1.0 to v0.3.0)
 
-Below is a complete summary of all architectural, functional, and visual changes made from the initial release (`v0.1.0`) through `v0.2.0`:
+Below is a complete summary of all architectural, functional, and visual changes made from the initial release (`v0.1.0`) through `v0.3.0`:
 
 | Release | Date | Key Capabilities & Changes |
 | :--- | :--- | :--- |
-| **`v0.2.0`** *(Current)* | **2026-07-31** | • Added Live Android Home Screen Widget (`OrgWalletBalance`) with real-time net balance.<br>• Added Quick Action shortcut buttons on widget (`+ Expense`, `+ Income`, `+ Transfer`) deep-linking to `/action/add-transaction`.<br>• Added comprehensive Settings screen (`/settings`) with Widget Opacity slider and live preview card.<br>• Added Offline Sync Management UI (sync interval selector, conflict resolution policy, queue badge count, manual 'Sync Now').<br>• Integrated production branding assets (`icon.png`, `adaptive-icon.png`, `logo.jpg`, and multi-density splash screen logos).<br>• Applied automated Java 25 -> OpenJDK 21 Gradle binding in `gradle.properties` and production release keystore signing. |
+| **`v0.3.0`** *(Current)* | **2026-08-03** | • Added full offline-first transaction editing and deletion (`EditTransactionModal`, `updateTransaction`, `deleteTransaction`).<br>• Added full offline-first sub-account editing and deletion with dynamic balance recalculation.<br>• Enforced Rule #2 Account Deletion Safeguards (`getAccountTransactionsCount` check blocking hard deletion of referenced accounts).<br>• Integrated bidirectional Sync Engine queue handlers (`UPDATE_TRANSACTION`, `DELETE_TRANSACTION`, `UPDATE_ACCOUNT`, `DELETE_ACCOUNT`).<br>• Applied FIFO mutex serialization (`withLock`) to all new SQLite CRUD methods.<br>• Updated Settings screen About card to display `OrgWallet v0.3.0`. |
+| **`v0.2.0`** | **2026-07-31** | • Added Live Android Home Screen Widget (`OrgWalletBalance`) with real-time net balance.<br>• Added Quick Action shortcut buttons on widget (`+ Expense`, `+ Income`, `+ Transfer`) deep-linking to `/action/add-transaction`.<br>• Added comprehensive Settings screen (`/settings`) with Widget Opacity slider and live preview card.<br>• Added Offline Sync Management UI (sync interval selector, conflict resolution policy, queue badge count, manual 'Sync Now').<br>• Integrated production branding assets (`icon.png`, `adaptive-icon.png`, `logo.jpg`, and multi-density splash screen logos).<br>• Applied automated Java 25 -> OpenJDK 21 Gradle binding in `gradle.properties` and production release keystore signing. |
 | **`v0.1.0`** *(Initial Beta)* | **2026-07-30** | • Implemented Personal Wallet mode with automatic detection of `[wallet]` metadata markers and default **`Cash`** sub-account creation.<br>• Implemented Local-First SQLite persistence (`orgwallet.db`) for zero-latency offline transaction and account management.<br>• Built background offline sync engine (`SyncEngine`) with `offline_sync_queue` and automatic reconnection recovery.<br>• Implemented accurate multi-sub-account Net Balance calculation engine.<br>• Created Dashboard, Transactions, and Accounts tabs with universal Floating Action Button (FAB) and unified `AddTransactionModal`.<br>• Added sub-account badge attribution (`Cash • 7/30/2026`, `Cash → Savings`) on transaction items.<br>• Resolved Supabase RLS recursion safeguards and PostgreSQL UUID input syntax protection. |
 
 ---

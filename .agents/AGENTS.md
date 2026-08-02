@@ -73,3 +73,26 @@ When adding a new syncable entity (e.g., `transaction_categories`) to OrgWallet,
 ### 2. Personal Wallet Category Seeding & Sync Invariants
 - **No Auto-Seeding on Sync Pulls**: Never seed default categories during mobile sync pulls. Category syncing must strictly download and mirror what is explicitly stored in `transaction_categories` on the database.
 - **Historical Transaction Label Preservation**: Deleting a category removes the category definition from `transaction_categories` for new transactions but preserves text labels on historical transactions.
+
+## Release Preparation & Version Synchronization Checklist
+
+When preparing a release or bumping application version numbers in OrgWallet, always update all 8 project locations synchronously:
+
+1. **`package.json`**:
+   - Update `"version": "X.Y.Z"`.
+2. **`package-lock.json`**:
+   - Update both root `"version": "X.Y.Z"` and package `""` `"version": "X.Y.Z"` (or run `npm i --package-lock-only`).
+3. **`app.json`**:
+   - Update `"version": "X.Y.Z"`.
+   - Increment `"versionCode"` (integer) under `expo.android.versionCode`.
+4. **`android/app/build.gradle`**:
+   - Update `versionName "X.Y.Z"`.
+   - Increment `versionCode` (matching `app.json`) in `defaultConfig`.
+5. **Settings Screen UI (`src/app/(tabs)/settings.tsx`)**:
+   - Always update the About section title (`<Text style={styles.aboutTitle}>OrgWallet vX.Y.Z</Text>`) so the mobile Settings screen accurately reflects the installed release.
+6. **`CHANGELOG.md`**:
+   - Add a Semantic Versioning release header (`## [X.Y.Z] - Release Name (YYYY-MM-DD)`) documenting new features, technical improvements, and fixes.
+7. **`RELEASE.md`**:
+   - Update the official Release Notes, release date, and Android Version Code for Google Play Console submission.
+8. **`README.md`**:
+   - Update the version/status shield badge (`<img ... alt="Version X.Y.Z" />`) to reflect the live release version.

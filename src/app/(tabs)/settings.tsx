@@ -428,7 +428,7 @@ export default function SettingsScreen() {
 
       {/* About Section */}
       <View style={styles.aboutCard}>
-        <Text style={styles.aboutTitle}>OrgWallet v0.1.0</Text>
+        <Text style={styles.aboutTitle}>OrgWallet v0.3.0</Text>
         <Text style={styles.aboutText}>
           Android-optimized mobile app for OrgFinance Personal Wallet tracking. Built with Expo React Native, Supabase, and SQLite offline synchronization.
         </Text>
