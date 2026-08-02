@@ -3,6 +3,7 @@ import { OfflineDatabase } from '@/lib/database/sqlite';
 import { supabaseAdmin as supabase } from '@/lib/supabase/client';
 import { generateUUID, isValidUUID } from '@/lib/utils/uuid';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
+import { WidgetService } from '@/lib/widget/widgetService';
 import type { SyncSettings, OfflineSyncQueueItem } from '@/types/wallet';
 
 const SYNC_SETTINGS_KEY = 'orgwallet_sync_settings';
@@ -108,9 +109,41 @@ export class SyncEngine {
 
       this.isSyncing = false;
       await this.notifyListeners();
+      WidgetService.refreshWidgetData(organizationId).catch(() => {});
       return { success: true };
     } catch (error: any) {
       console.error('[SyncEngine] Sync failed:', error);
+      this.isSyncing = false;
+      await this.notifyListeners();
+      return { success: false, error: error?.message || 'Unknown sync error' };
+    }
+  }
+
+  // --- First-time Auto Sync after User Login ---
+  public static async firstTimeAutoSync(organizationId: string): Promise<{ success: boolean; error?: string }> {
+    if (!this.isOnline) {
+      console.log('[SyncEngine] Skipping firstTimeAutoSync: offline');
+      return { success: false, error: 'No internet connection' };
+    }
+    console.log('[SyncEngine] Performing first-time auto sync after user login for org:', organizationId);
+    this.isSyncing = true;
+    await this.notifyListeners();
+
+    try {
+      // 1. Pull latest accounts and transactions from Supabase into SQLite first so dashboard has data immediately
+      await this.pullLatestData(organizationId);
+
+      // 2. Also push any pending local queue items if present
+      const settings = await this.getSettings();
+      await this.pushPendingQueue(settings.conflictResolution);
+
+      this.isSyncing = false;
+      await this.notifyListeners();
+      console.log('[SyncEngine] First-time auto sync completed successfully.');
+      WidgetService.refreshWidgetData(organizationId).catch(() => {});
+      return { success: true };
+    } catch (error: any) {
+      console.error('[SyncEngine] First-time auto sync failed:', error);
       this.isSyncing = false;
       await this.notifyListeners();
       return { success: false, error: error?.message || 'Unknown sync error' };

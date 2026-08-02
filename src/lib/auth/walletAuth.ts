@@ -150,9 +150,7 @@ export class WalletAuthService {
     if (this.cachedOrgId) {
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
-        SyncEngine.pullLatestData(this.cachedOrgId).catch((err) =>
-          console.error('[WalletAuthService] Background pull error:', err)
-        );
+        await SyncEngine.firstTimeAutoSync(this.cachedOrgId);
       }
       return { organizationId: this.cachedOrgId, createdNew: false };
     }
@@ -193,9 +191,7 @@ export class WalletAuthService {
           this.cachedOrgId = org.id;
           if (!this.hasPulledInitialData) {
             this.hasPulledInitialData = true;
-            SyncEngine.pullLatestData(org.id).catch((err) =>
-              console.error('[WalletAuthService] Background pull error:', err)
-            );
+            await SyncEngine.firstTimeAutoSync(org.id);
           }
           return { organizationId: org.id, createdNew: false };
         }
@@ -207,9 +203,7 @@ export class WalletAuthService {
       this.cachedOrgId = firstOrg.id;
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
-        SyncEngine.pullLatestData(firstOrg.id).catch((err) =>
-          console.error('[WalletAuthService] Background pull error:', err)
-        );
+        await SyncEngine.firstTimeAutoSync(firstOrg.id);
       }
       return { organizationId: firstOrg.id, createdNew: false };
     }
@@ -264,9 +258,7 @@ export class WalletAuthService {
 
     this.cachedOrgId = newOrg.id;
     this.hasPulledInitialData = true;
-    SyncEngine.pullLatestData(newOrg.id).catch((err) =>
-      console.error('[WalletAuthService] Background pull error:', err)
-    );
+    await SyncEngine.firstTimeAutoSync(newOrg.id);
     return { organizationId: newOrg.id, createdNew: true };
   }
 }
