@@ -175,7 +175,9 @@ export class OfflineDatabase {
            account_id = excluded.account_id,
            transfer_to_account_id = excluded.transfer_to_account_id,
            category = excluded.category,
+           category_id = excluded.category_id,
            description = excluded.description,
+           occurred_at = excluded.occurred_at,
            sync_status = excluded.sync_status;`,
         [
           tx.id ?? null,
@@ -218,6 +220,16 @@ export class OfflineDatabase {
         occurred_at: r.occurred_at,
         sync_status: r.sync_status,
       }));
+    });
+  }
+
+  public static async deleteTransaction(id: string, organizationId: string): Promise<void> {
+    return this.withLock(async () => {
+      const db = await this.getDb();
+      await db.runAsync(
+        `DELETE FROM local_transactions WHERE id = ? AND organization_id = ?;`,
+        [id ?? null, organizationId ?? null]
+      );
     });
   }
 

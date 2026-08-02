@@ -194,6 +194,50 @@ export class SyncEngine {
           } else {
             throw error;
           }
+        } else if (item.action === 'UPDATE_TRANSACTION') {
+          const validAccountId =
+            payload.account_id && isValidUUID(payload.account_id)
+              ? payload.account_id
+              : null;
+          const validTransferToId =
+            payload.transfer_to_account_id &&
+            isValidUUID(payload.transfer_to_account_id)
+              ? payload.transfer_to_account_id
+              : null;
+
+          const { error } = await supabase
+            .from('transactions')
+            .update({
+              type: payload.type,
+              amount: payload.amount,
+              account_id: validAccountId,
+              transfer_to_account_id: validTransferToId,
+              category: payload.category || null,
+              description: payload.description || '',
+              occurred_at: payload.occurred_at || new Date().toISOString(),
+            })
+            .eq('id', payload.id)
+            .eq('organization_id', payload.organization_id);
+
+          if (!error) success = true;
+          else if (conflictRule === 'server_wins') {
+            success = true;
+          } else {
+            throw error;
+          }
+        } else if (item.action === 'DELETE_TRANSACTION') {
+          const { error } = await supabase
+            .from('transactions')
+            .delete()
+            .eq('id', payload.id)
+            .eq('organization_id', payload.organization_id);
+
+          if (!error) success = true;
+          else if (conflictRule === 'server_wins') {
+            success = true;
+          } else {
+            throw error;
+          }
         } else if (item.action === 'CREATE_ACCOUNT') {
           const accId = isValidUUID(payload.id) ? payload.id : generateUUID();
           const { error } = await supabase.from('wallet_accounts').insert({
@@ -293,6 +337,13 @@ export class SyncEngine {
       .limit(100);
 
     if (!txErr && txs) {
+      const serverIds = new Set(txs.map((t) => t.id));
+      const localTxs = await OfflineDatabase.getTransactions(organizationId, 100);
+      for (const localTx of localTxs) {
+        if (localTx.sync_status === 'synced' && !serverIds.has(localTx.id)) {
+          await OfflineDatabase.deleteTransaction(localTx.id, organizationId);
+        }
+      }
       for (const tx of txs) {
         await OfflineDatabase.upsertTransaction({
           id: tx.id,
