@@ -5,6 +5,66 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.2.0] - Live Android Home Screen Widget & Branding Release (2026-07-31)
+
+### 🌟 New Features & Capabilities
+
+- **Live Android Home Screen Widget (`OrgWalletBalance`)**:
+  - Engineered a native Android home screen widget displaying the user's **Total Net Balance** in real time directly on the phone launcher screen.
+  - Implemented automatic background balance synchronization (`widgetTaskHandler.ts` & `widgetService.ts`), ensuring the widget balance updates immediately when local SQLite accounts or transactions mutate.
+  - Built responsive AnyDPI native XML layouts (`widget_initial_layout.xml`, `widgetprovider_orgwalletbalance.xml`) compatible with all Android launcher sizes and screen densities.
+
+- **1-Tap Quick Action Shortcuts on Widget**:
+  - Integrated dedicated quick-action shortcut buttons directly on the home screen widget card: **`+ Expense`**, **`+ Income`**, and **`+ Transfer`**.
+  - Tapping a shortcut launches OrgWallet directly into a standalone modal route (`/action/add-transaction`) with the target transaction type pre-selected, reducing transaction logging to a single tap.
+
+- **Wallpaper Translucency & Custom Opacity Control**:
+  - Added an interactive **Widget Background Opacity Slider** in the new **Settings** screen (`/settings`), allowing users to adjust translucency between 20% and 100% opacity (`0.2` to `1.0`).
+  - Implemented an interactive on-screen **Live Widget Preview Card** inside Settings that renders the exact balance and styling as adjusted.
+
+- **Advanced Offline Sync Management UI (`/settings`)**:
+  - Added a dedicated **Settings & Synchronization Management** screen.
+  - **Configurable Sync Modes**: Enable automatic real-time background sync, manual-only mode, or scheduled syncs (every 15 minutes, 60 minutes, or Daily / 24 hours).
+  - **Conflict Resolution Policies**: User-selectable policy for offline mutations (`local_wins`, `server_wins`, or `ask_user`).
+  - **Queue Badge Counter & Manual Sync Trigger**: Live counter of unsynchronized offline items with a **Sync Now** action button providing immediate feedback alerts upon completion.
+
+- **Full Production Branding & Visual Identity**:
+  - Replaced Expo default placeholders with custom high-resolution **App Icon** (`assets/icon.png`), **Adaptive Launcher Icon** (`assets/adaptive-icon.png`), and **Favicon**.
+  - Added branded app logos (`assets/logo.jpg`) and integrated custom splash screen drawable logos across all Android screen densities (`hdpi`, `mdpi`, `xhdpi`, `xxhdpi`, `xxxhdpi`).
+  - Integrated brand logo headers into Login and OAuth Callback screens.
+
+---
+
+### 🔧 Technical Improvements & Fixes
+
+- **Java 25 (Major Version 69) Compatibility Resolution**:
+  - Resolved Gradle 8.14.3 build failures on machines with system Java 25 (`W:\Dev\JDK`) by configuring `org.gradle.java.home=W:/Dev/Android/Android Studio/jbr` in `android/gradle.properties`, directing Gradle to Android Studio's OpenJDK 21.
+- **Production Keystore Release Signing**:
+  - Generated an automated production 2048-bit RSA release keystore (`android/app/release.keystore`) and configured `android/app/build.gradle` to use a dedicated `signingConfigs.release` block, ensuring all APK and AAB builds are signed in Release Mode and compliant with Google Play Console requirements.
+- **Android Adaptive Launcher Icons**:
+  - Added AnyDPI adaptive launcher XML configurations (`ic_launcher.xml`, `ic_launcher_round.xml`) for modern Android devices.
+
+---
+
+### 🔄 Updated Primary User Flows
+
+1. **1-Tap Home Screen Transaction Logging Flow**:
+   - User glances at their real-time Net Balance on the Android Home Screen Widget.
+   - User taps **`+ Expense`**, **`+ Income`**, or **`+ Transfer`** directly on the widget.
+   - OrgWallet opens immediately to `/action/add-transaction` with the transaction type pre-selected.
+   - User inputs amount and saves; local SQLite database, UI lists, and home screen widget update instantly.
+
+2. **Widget Opacity Customization Flow**:
+   - Navigate to **Settings** tab $\rightarrow$ **Widget Configuration**.
+   - Drag the background opacity slider while observing the **Live Preview Card**.
+   - Tap **Apply & Update Widget** to instantly push the visual update to the native Android widget.
+
+3. **Offline Sync Queue & Manual Trigger Flow**:
+   - In environments with limited connectivity, users can inspect their pending mutation count in **Settings**.
+   - When connection is restored, user taps **Sync Now** to immediately flush the offline SQLite queue to Supabase and receive status verification.
+
+---
+
 ## [0.1.0] - Initial Beta Release (2026-07-30)
 
 ### 🌟 Core Features & Capabilities
