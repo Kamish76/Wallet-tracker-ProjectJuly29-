@@ -258,6 +258,32 @@ export class SyncEngine {
             .eq('organization_id', payload.organization_id);
           if (!error) success = true;
           else throw error;
+        } else if (item.action === 'UPDATE_ACCOUNT') {
+          const { error } = await supabase
+            .from('wallet_accounts')
+            .update({
+              name: payload.name,
+              starting_value: payload.starting_value,
+              is_active: payload.is_active ?? true,
+              updated_at: payload.updated_at || new Date().toISOString(),
+            })
+            .eq('id', payload.id)
+            .eq('organization_id', payload.organization_id);
+          if (!error) success = true;
+          else throw error;
+        } else if (item.action === 'DELETE_ACCOUNT') {
+          const { error } = await supabase
+            .from('wallet_accounts')
+            .delete()
+            .eq('id', payload.id)
+            .eq('organization_id', payload.organization_id);
+
+          if (!error) success = true;
+          else if (conflictRule === 'server_wins') {
+            success = true;
+          } else {
+            throw error;
+          }
         } else if (
           item.action === 'CREATE_CATEGORY' ||
           item.action === 'UPDATE_CATEGORY'
@@ -324,7 +350,7 @@ export class SyncEngine {
     for (const item of pendingItems) {
       try {
         const payload = JSON.parse(item.payload);
-        if (item.action === 'CREATE_ACCOUNT' && payload.id) {
+        if ((item.action === 'CREATE_ACCOUNT' || item.action === 'UPDATE_ACCOUNT') && payload.id) {
           pendingCreateAccIds.add(payload.id);
         } else if (item.action === 'CREATE_TRANSACTION' && payload.id) {
           pendingCreateTxIds.add(payload.id);

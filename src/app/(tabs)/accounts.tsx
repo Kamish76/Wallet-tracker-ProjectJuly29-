@@ -9,7 +9,7 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
-import { Plus, Archive, X, Wallet as WalletIcon } from 'lucide-react-native';
+import { Plus, Archive, X, Wallet as WalletIcon, Edit2, Trash2 } from 'lucide-react-native';
 import { useFocusEffect } from 'expo-router';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
@@ -26,10 +26,25 @@ export default function AccountsScreen() {
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<AccountWithBalance | null>(null);
   const [accName, setAccName] = useState('');
   const [startingVal, setStartingVal] = useState('0');
   const [orgId, setOrgId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const openCreateModal = () => {
+    setEditingAccount(null);
+    setAccName('');
+    setStartingVal('0');
+    setModalVisible(true);
+  };
+
+  const openEditModal = (acc: AccountWithBalance) => {
+    setEditingAccount(acc);
+    setAccName(acc.name);
+    setStartingVal(String(acc.starting_value));
+    setModalVisible(true);
+  };
 
   const loadLocalAccounts = useCallback(async (organizationId: string, archived: boolean) => {
     const rawAccounts = await OfflineDatabase.getAccounts(organizationId, archived);
@@ -68,7 +83,7 @@ export default function AccountsScreen() {
     }, [orgId, showArchived, loadLocalAccounts])
   );
 
-  const handleCreateAccount = async () => {
+  const handleSaveAccount = async () => {
     if (!orgId) return;
     const sanitizedName = SecurityService.sanitizeText(accName, 50);
     if (!sanitizedName) {
@@ -81,38 +96,124 @@ export default function AccountsScreen() {
       return;
     }
 
+    const limitCheck = await RateLimiter.checkLimit('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+    if (!limitCheck.allowed) {
+      Alert.alert('Rate Limit Exceeded', `Too many requests. Please try again in ${limitCheck.retryAfterSeconds} seconds.`);
+      return;
+    }
+    await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+
     setSaving(true);
     try {
-      await RateLimiter.assertAllowed('mutation:create', RateLimitPolicies.MUTATION_CREATE);
-      await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+      if (editingAccount) {
+        const updatedAcc: WalletAccount = {
+          id: editingAccount.id,
+          organization_id: orgId,
+          name: sanitizedName,
+          starting_value: valValidation.value,
+          is_active: editingAccount.is_active,
+          created_at: editingAccount.created_at,
+          updated_at: new Date().toISOString(),
+        };
 
-      const newAcc: WalletAccount = {
-        id: generateUUID(),
-        organization_id: orgId,
-        name: sanitizedName,
-        starting_value: valValidation.value,
-        is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
+        await OfflineDatabase.upsertAccount(updatedAcc, 'pending');
+        await OfflineDatabase.enqueueMutation('UPDATE_ACCOUNT', updatedAcc);
 
-      await OfflineDatabase.upsertAccount(newAcc, 'pending');
-      await OfflineDatabase.enqueueMutation('CREATE_ACCOUNT', newAcc);
+        if (SyncEngine.getOnlineStatus()) {
+          SyncEngine.syncNow(orgId);
+        }
 
-      if (SyncEngine.getOnlineStatus()) {
-        SyncEngine.syncNow(orgId);
+        setModalVisible(false);
+        setEditingAccount(null);
+        await loadLocalAccounts(orgId, showArchived);
+      } else {
+        const newAcc: WalletAccount = {
+          id: generateUUID(),
+          organization_id: orgId,
+          name: sanitizedName,
+          starting_value: valValidation.value,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        await OfflineDatabase.upsertAccount(newAcc, 'pending');
+        await OfflineDatabase.enqueueMutation('CREATE_ACCOUNT', newAcc);
+
+        if (SyncEngine.getOnlineStatus()) {
+          SyncEngine.syncNow(orgId);
+        }
+
+        setAccName('');
+        setStartingVal('0');
+        setModalVisible(false);
+        await loadLocalAccounts(orgId, showArchived);
       }
-
-      setAccName('');
-      setStartingVal('0');
-      setModalVisible(false);
-      await loadLocalAccounts(orgId, showArchived);
     } catch (e: any) {
-      const title = e?.name === 'RateLimitError' ? 'Rate Limit Exceeded' : 'Error';
-      Alert.alert(title, e?.message || 'Failed to add account.');
+      Alert.alert('Error', e?.message || 'Failed to save account.');
     } finally {
       setSaving(false);
     }
+  };
+
+  // Rule #2 Safeguard: Never delete an account if referenced by any transactions
+  const handleDeleteAccount = (account: AccountWithBalance) => {
+    if (account.transaction_count > 0) {
+      Alert.alert(
+        'Cannot Delete Sub-Account',
+        `"${account.name}" is referenced by ${account.transaction_count} historical transaction(s) and cannot be permanently deleted. You can archive it instead.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: account.is_active ? 'Archive Sub-Account' : 'OK',
+            style: 'default',
+            onPress: () => {
+              if (account.is_active) {
+                setModalVisible(false);
+                setEditingAccount(null);
+                handleArchiveAccount(account);
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Delete Sub-Account',
+      `Are you sure you want to permanently delete "${account.name}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            if (!orgId) return;
+            setSaving(true);
+            try {
+              await OfflineDatabase.deleteAccount(account.id, orgId);
+              await OfflineDatabase.enqueueMutation('DELETE_ACCOUNT', {
+                id: account.id,
+                organization_id: orgId,
+              });
+
+              if (SyncEngine.getOnlineStatus()) {
+                SyncEngine.syncNow(orgId);
+              }
+
+              setModalVisible(false);
+              setEditingAccount(null);
+              await loadLocalAccounts(orgId, showArchived);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to delete account.');
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Rule #2 Safeguard: Require Archive instead of Hard Delete
@@ -144,6 +245,31 @@ export default function AccountsScreen() {
     );
   };
 
+  const handleUnarchiveAccount = (account: WalletAccount) => {
+    Alert.alert(
+      'Unarchive Sub-Account',
+      `Are you sure you want to reactivate "${account.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unarchive',
+          style: 'default',
+          onPress: async () => {
+            if (!orgId) return;
+            const updated = { ...account, is_active: true };
+            await OfflineDatabase.upsertAccount(updated, 'pending');
+            await OfflineDatabase.enqueueMutation('UPDATE_ACCOUNT', updated);
+
+            if (SyncEngine.getOnlineStatus()) {
+              SyncEngine.syncNow(orgId);
+            }
+            await loadLocalAccounts(orgId, showArchived);
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -151,7 +277,7 @@ export default function AccountsScreen() {
         <Text style={styles.title}>Wallet Sub-Accounts</Text>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => setModalVisible(true)}
+          onPress={openCreateModal}
         >
           <Plus size={18} color={Colors.background} />
           <Text style={styles.addButtonText}>Add</Text>
@@ -179,7 +305,12 @@ export default function AccountsScreen() {
           </View>
         ) : (
           accounts.map((acc) => (
-            <View key={acc.id} style={[styles.card, !acc.is_active && styles.cardArchived]}>
+            <TouchableOpacity
+              key={acc.id}
+              style={[styles.card, !acc.is_active && styles.cardArchived]}
+              onPress={() => openEditModal(acc)}
+              activeOpacity={0.7}
+            >
               <View style={styles.cardLeft}>
                 <View style={styles.iconBox}>
                   <WalletIcon size={20} color={acc.is_active ? Colors.primary : Colors.textDim} />
@@ -188,32 +319,47 @@ export default function AccountsScreen() {
                   <Text style={styles.accName}>
                     {acc.name} {!acc.is_active && '(Archived)'}
                   </Text>
-                  <Text style={styles.accValue}>
-                    Current: ${Number(acc.current_balance || 0).toFixed(2)} • Starting: ${Number(acc.starting_value).toFixed(2)}
+                  <Text style={styles.accBalanceLarge}>
+                    {Number(acc.current_balance || 0) < 0 ? '-' : ''}${Math.abs(Number(acc.current_balance || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Text>
                 </View>
               </View>
 
-              {acc.is_active && (
+              <View style={styles.cardActions}>
                 <TouchableOpacity
-                  style={styles.archiveBtn}
-                  onPress={() => handleArchiveAccount(acc)}
+                  style={styles.actionBtn}
+                  onPress={() => openEditModal(acc)}
                 >
-                  <Archive size={16} color={Colors.textMuted} />
+                  <Edit2 size={16} color={Colors.textMuted} />
                 </TouchableOpacity>
-              )}
-            </View>
+                {acc.is_active && (
+                  <TouchableOpacity
+                    style={styles.actionBtn}
+                    onPress={() => handleArchiveAccount(acc)}
+                  >
+                    <Archive size={16} color={Colors.textMuted} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>
 
-      {/* Add Account Modal */}
+      {/* Add / Edit Account Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Sub-Account</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <Text style={styles.modalTitle}>
+                {editingAccount ? 'Edit Sub-Account' : 'New Sub-Account'}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setModalVisible(false);
+                  setEditingAccount(null);
+                }}
+              >
                 <X size={22} color={Colors.textMuted} />
               </TouchableOpacity>
             </View>
@@ -239,13 +385,54 @@ export default function AccountsScreen() {
 
             <TouchableOpacity
               style={styles.saveButton}
-              onPress={handleCreateAccount}
+              onPress={handleSaveAccount}
               disabled={saving}
             >
               <Text style={styles.saveButtonText}>
-                {saving ? 'Creating...' : 'Create Account'}
+                {saving ? 'Saving...' : editingAccount ? 'Save Changes' : 'Create Account'}
               </Text>
             </TouchableOpacity>
+
+            {editingAccount && (
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.archiveModalButton}
+                  onPress={() => {
+                    setModalVisible(false);
+                    const acc = editingAccount;
+                    setEditingAccount(null);
+                    if (acc.is_active) {
+                      handleArchiveAccount(acc);
+                    } else {
+                      handleUnarchiveAccount(acc);
+                    }
+                  }}
+                  disabled={saving}
+                >
+                  <Archive size={18} color={Colors.textMuted} style={{ marginRight: 8 }} />
+                  <Text style={styles.archiveModalButtonText}>
+                    {editingAccount.is_active ? 'Archive Sub-Account' : 'Unarchive Sub-Account'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.deleteButton,
+                    editingAccount.transaction_count > 0 && styles.deleteButtonDisabled,
+                  ]}
+                  onPress={() => handleDeleteAccount(editingAccount)}
+                  disabled={saving}
+                >
+                  <Trash2 size={18} color={Colors.error} style={{ marginRight: 8 }} />
+                  <Text style={styles.deleteButtonText}>Delete Sub-Account</Text>
+                </TouchableOpacity>
+                {editingAccount.transaction_count > 0 && (
+                  <Text style={styles.safeguardHintText}>
+                    Cannot delete: referenced by {editingAccount.transaction_count} transaction{editingAccount.transaction_count === 1 ? '' : 's'}. Archive instead.
+                  </Text>
+                )}
+              </View>
+            )}
           </View>
         </View>
       </Modal>
@@ -341,11 +528,16 @@ const styles = StyleSheet.create({
     marginRight: Tokens.spacing.md,
   },
   accName: {
-    ...Tokens.typography.h3,
-  },
-  accValue: {
-    ...Tokens.typography.caption,
+    fontSize: 13,
+    fontWeight: '600',
     color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  accBalanceLarge: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.textWhite,
     marginTop: 2,
   },
   archiveBtn: {
@@ -410,4 +602,56 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.background,
   },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionBtn: {
+    padding: 8,
+    marginLeft: 4,
+  },
+  modalActions: {
+    marginTop: Tokens.spacing.md,
+  },
+  archiveModalButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Tokens.radius.md,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Tokens.spacing.sm,
+  },
+  archiveModalButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 82, 82, 0.1)',
+    borderRadius: Tokens.radius.md,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 82, 82, 0.3)',
+  },
+  deleteButtonDisabled: {
+    opacity: 0.6,
+  },
+  deleteButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.error,
+  },
+  safeguardHintText: {
+    ...Tokens.typography.caption,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginTop: 6,
+  },
 });
+
