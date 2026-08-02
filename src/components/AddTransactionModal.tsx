@@ -8,7 +8,7 @@ import {
   Alert,
   StyleSheet,
 } from 'react-native';
-import { X } from 'lucide-react-native';
+import { X, Plus } from 'lucide-react-native';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { Colors } from '@/theme/colors';
@@ -17,7 +17,7 @@ import { generateUUID } from '@/lib/utils/uuid';
 import { WidgetService } from '@/lib/widget/widgetService';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
-import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/wallet';
+import type { WalletAccount, WalletTransaction, TransactionType, WalletCategory } from '@/types/wallet';
 
 interface AddTransactionModalProps {
   visible: boolean;
@@ -45,23 +45,81 @@ export function AddTransactionModal({
   const [category, setCategory] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [categories, setCategories] = useState<WalletCategory[]>([]);
+  const [showCustomCatInput, setShowCustomCatInput] = useState(false);
+  const [customCatName, setCustomCatName] = useState('');
 
   useEffect(() => {
-    if (visible) {
+    if (visible && orgId) {
       if (initialType) {
         setTxType(initialType);
       }
       if (accounts.length > 0 && !accountId) {
         setAccountId(accounts[0].id);
       }
+      OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
+    } else {
+      setShowCustomCatInput(false);
+      setCustomCatName('');
     }
-  }, [visible, accounts, accountId, initialType]);
+  }, [visible, accounts, accountId, initialType, orgId]);
+
+  const filteredCategories = categories.filter((c) => {
+    if (txType === 'income') return c.aliases?.includes('type:income');
+    return c.aliases?.includes('type:expense');
+  });
+
+  const handleCreateCustomCategory = async () => {
+    if (!orgId || !customCatName.trim()) return;
+    const sanitized = SecurityService.sanitizeText(customCatName, 60).trim();
+    if (!sanitized) return;
+
+    const rateStatus = await RateLimiter.checkLimit(
+      'mutation:create',
+      RateLimitPolicies.MUTATION_CREATE
+    );
+    if (!rateStatus.allowed) {
+      Alert.alert('Rate Limit Exceeded', `Please try again in ${rateStatus.retryAfterSeconds}s.`);
+      return;
+    }
+    await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+
+    const normalized = sanitized.toLowerCase();
+    const id = generateUUID();
+    const now = new Date().toISOString();
+    const newCat: WalletCategory = {
+      id,
+      organization_id: orgId,
+      normalized_name: normalized,
+      display_name: sanitized,
+      aliases: [txType === 'income' ? 'type:income' : 'type:expense'],
+      is_custom: true,
+      created_at: now,
+      updated_at: now,
+      sync_status: 'pending',
+    };
+
+    await OfflineDatabase.upsertCategory(newCat, 'pending');
+    await OfflineDatabase.enqueueMutation('CREATE_CATEGORY', newCat);
+
+    if (SyncEngine.getOnlineStatus()) {
+      SyncEngine.syncNow(orgId).catch(() => {});
+    }
+
+    const updatedList = await OfflineDatabase.getCategories(orgId);
+    setCategories(updatedList);
+    setCategory(sanitized);
+    setCustomCatName('');
+    setShowCustomCatInput(false);
+  };
 
   const resetForm = () => {
     setAmount('');
     setCategory('');
     setNotes('');
     setTransferToId('');
+    setShowCustomCatInput(false);
+    setCustomCatName('');
   };
 
   const handleAddTransaction = async () => {
@@ -245,13 +303,61 @@ export function AddTransactionModal({
           {txType !== 'transfer' && (
             <>
               <Text style={styles.inputLabel}>Category</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Groceries, Salary, Dining"
-                placeholderTextColor={Colors.textDim}
-                value={category}
-                onChangeText={setCategory}
-              />
+              <View style={styles.categoryPillsContainer}>
+                {filteredCategories.map((cat) => {
+                  const isSelected = category === cat.display_name;
+                  return (
+                    <TouchableOpacity
+                      key={cat.id}
+                      style={[
+                        styles.categoryPill,
+                        isSelected && styles.categoryPillSelected,
+                      ]}
+                      onPress={() => setCategory(cat.display_name)}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryPillText,
+                          isSelected && styles.categoryPillTextSelected,
+                        ]}
+                      >
+                        {cat.display_name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                <TouchableOpacity
+                  style={styles.addCategoryPill}
+                  onPress={() => setShowCustomCatInput(!showCustomCatInput)}
+                >
+                  <Plus size={14} color={Colors.primary} />
+                  <Text style={styles.addCategoryPillText}>+ Custom</Text>
+                </TouchableOpacity>
+              </View>
+
+              {showCustomCatInput && (
+                <View style={styles.customCategoryRow}>
+                  <TextInput
+                    style={styles.customCategoryInput}
+                    placeholder="Enter custom category name..."
+                    placeholderTextColor={Colors.textDim}
+                    value={customCatName}
+                    onChangeText={setCustomCatName}
+                    maxLength={60}
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.customCategoryAddBtn,
+                      !customCatName.trim() && { opacity: 0.4 },
+                    ]}
+                    onPress={handleCreateCustomCategory}
+                    disabled={!customCatName.trim()}
+                  >
+                    <Text style={styles.customCategoryAddBtnText}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </>
           )}
 
@@ -380,5 +486,77 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: Colors.background,
+  },
+  categoryPillsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: Tokens.spacing.md,
+  },
+  categoryPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: Tokens.radius.full,
+    backgroundColor: Colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  categoryPillSelected: {
+    backgroundColor: Colors.primaryDark,
+    borderColor: Colors.primary,
+  },
+  categoryPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textLight,
+  },
+  categoryPillTextSelected: {
+    color: Colors.background,
+  },
+  addCategoryPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: Tokens.radius.full,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  addCategoryPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  customCategoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: Tokens.spacing.md,
+  },
+  customCategoryInput: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: Tokens.radius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    paddingHorizontal: Tokens.spacing.md,
+    paddingVertical: 10,
+    color: Colors.textWhite,
+    fontSize: 14,
+  },
+  customCategoryAddBtn: {
+    backgroundColor: Colors.primaryDark,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: Tokens.radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customCategoryAddBtnText: {
+    ...Tokens.typography.body,
+    color: Colors.background,
+    fontWeight: '700',
   },
 });

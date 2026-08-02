@@ -64,7 +64,29 @@ export type SyncSettings = {
   autoSyncOnReconnect: boolean;
 };
 
-export type SyncQueueAction = 'CREATE_TRANSACTION' | 'UPDATE_TRANSACTION' | 'DELETE_TRANSACTION' | 'CREATE_ACCOUNT' | 'ARCHIVE_ACCOUNT';
+export type WalletCategory = {
+  id: string;
+  organization_id: string;
+  normalized_name: string;
+  display_name: string;
+  aliases: string[]; // e.g. ['type:income'] or ['type:expense']
+  is_custom: boolean;
+  created_at: string;
+  updated_at: string;
+  // Local offline status flags
+  sync_status?: 'synced' | 'pending' | 'syncing' | 'failed';
+  local_id?: string;
+};
+
+export type SyncQueueAction =
+  | 'CREATE_TRANSACTION'
+  | 'UPDATE_TRANSACTION'
+  | 'DELETE_TRANSACTION'
+  | 'CREATE_ACCOUNT'
+  | 'ARCHIVE_ACCOUNT'
+  | 'CREATE_CATEGORY'
+  | 'UPDATE_CATEGORY'
+  | 'DELETE_CATEGORY';
 
 export type OfflineSyncQueueItem = {
   id: string;
@@ -82,3 +104,19 @@ export type WalletTotals = {
   totalExpensePersonal: number;
   accountCount: number;
 };
+
+export const DEFAULT_INCOME_CATEGORIES = [
+  'Salary',
+  'Freelance',
+  'Investments',
+  'Gifts',
+  'Other Income',
+];
+
+export const DEFAULT_EXPENSE_CATEGORIES = [
+  'Food & Dining',
+  'Housing',
+  'Transportation',
+  'Utilities',
+  'Other Expense',
+];

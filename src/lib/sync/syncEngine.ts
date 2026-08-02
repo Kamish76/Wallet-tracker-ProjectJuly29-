@@ -214,6 +214,32 @@ export class SyncEngine {
             .eq('organization_id', payload.organization_id);
           if (!error) success = true;
           else throw error;
+        } else if (
+          item.action === 'CREATE_CATEGORY' ||
+          item.action === 'UPDATE_CATEGORY'
+        ) {
+          const catId = isValidUUID(payload.id) ? payload.id : generateUUID();
+          const { error } = await supabase
+            .from('transaction_categories')
+            .upsert({
+              id: catId,
+              organization_id: payload.organization_id,
+              normalized_name: (payload.normalized_name || '').toLowerCase(),
+              aliases: payload.aliases || [],
+              is_custom: Boolean(payload.is_custom),
+              created_at: payload.created_at || new Date().toISOString(),
+              updated_at: payload.updated_at || new Date().toISOString(),
+            });
+          if (!error) success = true;
+          else throw error;
+        } else if (item.action === 'DELETE_CATEGORY') {
+          const { error } = await supabase
+            .from('transaction_categories')
+            .delete()
+            .eq('id', payload.id)
+            .eq('organization_id', payload.organization_id);
+          if (!error) success = true;
+          else throw error;
         }
 
         if (success) {
@@ -282,6 +308,34 @@ export class SyncEngine {
           created_at: tx.created_at,
           occurred_at: tx.occurred_at,
         }, 'synced');
+      }
+    }
+
+    // 3. Fetch transaction categories
+    const { data: categories, error: catErr } = await supabase
+      .from('transaction_categories')
+      .select('*')
+      .eq('organization_id', organizationId);
+
+    if (!catErr && categories) {
+      for (const cat of categories) {
+        const words = (cat.normalized_name || '')
+          .split(' ')
+          .map((w: string) => (w.length > 0 ? w[0].toUpperCase() + w.slice(1) : ''))
+          .join(' ');
+        await OfflineDatabase.upsertCategory(
+          {
+            id: cat.id,
+            organization_id: cat.organization_id,
+            normalized_name: cat.normalized_name,
+            display_name: words,
+            aliases: cat.aliases || [],
+            is_custom: Boolean(cat.is_custom),
+            created_at: cat.created_at,
+            updated_at: cat.updated_at,
+          },
+          'synced'
+        );
       }
     }
   }
