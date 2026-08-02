@@ -35,6 +35,7 @@ Enforce rate limits on sensitive user actions using `RateLimiter.assertAllowed(a
 - **`SYNC_NOW`** (`10 attempts / 60s`): Prevents UI spamming or background loops from flooding Supabase APIs.
 - **`MUTATION_CREATE`** (`60 attempts / 60s`): Prevents automated scripts or UI spam from flooding the offline SQLite sync queue.
 *Rate-limit history must be persisted in `AsyncStorage` (`@orgwallet_rate_limit_history`) so limits survive app restarts.*
+- **UI Event Handler Exception Safety**: In React Native UI components (e.g., modals, form submit buttons), use `await RateLimiter.checkLimit(action, policy)` instead of `assertAllowed` so the component can inspect `{ allowed, retryAfterSeconds }` and display a clean `Alert.alert(...)` without throwing unhandled exceptions.
 
 ## Session Hygiene & First-Time Auto Sync
 
@@ -43,3 +44,16 @@ Always call `OfflineDatabase.clearAllData()` and `WalletAuthService.clearCache()
 
 ### 2. Post-Login First-Time Auto Sync
 When resolving a user's wallet organization after authentication (`resolveUserWallet`), always `await SyncEngine.firstTimeAutoSync(orgId)` before navigating to `/dashboard`. This guarantees that local SQLite is fully populated with `wallet_accounts` and `transactions` and Android home screen widgets are refreshed before the dashboard mounts.
+
+## Syncable Entity Extensibility & Category Rules
+
+### 1. 4-Layer Checklist for New Syncable Entities
+When adding a new syncable entity (e.g., `transaction_categories`) to OrgWallet, implement it across all four mandatory layers:
+1. **Supabase Schema**: Define the table type in `types/supabase.ts`.
+2. **Domain Types & Actions**: Define the TypeScript interface and add corresponding queue mutation action names (`CREATE_*`, `UPDATE_*`, `DELETE_*`) to `SyncQueueAction` in `types/wallet.ts`.
+3. **Offline SQLite Storage**: Create the SQLite table in `initDb()`, wrap all CRUD methods in `withLock()`, and scrub the table in `clearAllData()` upon logout.
+4. **Sync Engine Integration**: Implement pull/push logic in `SyncEngine` (`syncEngine.ts`) and register mutation handlers in `processQueueItem()`.
+
+### 2. Personal Wallet Category Seeding & Sync Invariants
+- **No Auto-Seeding on Sync Pulls**: Never seed default categories during mobile sync pulls. Category syncing must strictly download and mirror what is explicitly stored in `transaction_categories` on the database.
+- **Historical Transaction Label Preservation**: Deleting a category removes the category definition from `transaction_categories` for new transactions but preserves text labels on historical transactions.
