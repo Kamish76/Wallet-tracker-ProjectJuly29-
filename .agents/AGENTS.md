@@ -3,11 +3,27 @@
 ## Android Build — Java 25 Incompatibility Fix
 This machine's system Java (`W:\Dev\JDK`) is **Java 25**, which outputs class file major version 69. Gradle 8.14.3 only supports up to Java 21 and will fail with `Unsupported class file major version 69`.
 
-**Fix:** `android/gradle.properties` must always contain:
-```
+### 1. Command-Line Builds (`gradlew.bat`)
+Both `android/gradle.properties` and root-level `gradle.properties` must always contain:
+```properties
 org.gradle.java.home=W:/Dev/Android/Android Studio/jbr
 ```
 This points Gradle to Android Studio's bundled **OpenJDK 21** (`W:\Dev\Android\Android Studio\jbr`). If `npx expo prebuild --clean` regenerates `android/gradle.properties`, re-add this line before running `gradlew.bat`.
+
+### 2. VS Code & IDE Notifications (`vscode-gradle` / Java Language Server)
+To prevent VS Code's Gradle/Java extensions from crashing with `Unsupported class file major version 69` or spawning noisy background import errors:
+- Always ensure `.vscode/settings.json` and any `.code-workspace` files set:
+  ```json
+  "gradle.javaHome": "W:/Dev/Android/Android Studio/jbr",
+  "java.import.gradle.java.home": "W:/Dev/Android/Android Studio/jbr",
+  "java.jdt.ls.java.home": "W:/Dev/Android/Android Studio/jbr"
+  ```
+- Disable background auto-detect spam in React Native / Expo projects by adding:
+  ```json
+  "gradle.autoDetect": "off",
+  "java.import.gradle.enabled": false,
+  "gradle.nestedProjects": true
+  ```
 
 ## SQLite Concurrency & Stability (`expo-sqlite` Android Rules)
 
