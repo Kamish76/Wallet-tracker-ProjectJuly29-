@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { supabaseAdmin as supabase } from '@/lib/supabase/client';
 import { generateUUID, isValidUUID } from '@/lib/utils/uuid';
+import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import type { SyncSettings, OfflineSyncQueueItem } from '@/types/wallet';
 
 const SYNC_SETTINGS_KEY = 'orgwallet_sync_settings';
@@ -81,6 +82,15 @@ export class SyncEngine {
     if (!this.isOnline) {
       return { success: false, error: 'No internet connection' };
     }
+
+    const rateStatus = await RateLimiter.checkLimit('sync:now', RateLimitPolicies.SYNC_NOW);
+    if (!rateStatus.allowed) {
+      return {
+        success: false,
+        error: `Sync rate limit exceeded. Please wait ${rateStatus.retryAfterSeconds}s.`,
+      };
+    }
+    await RateLimiter.recordAttempt('sync:now', RateLimitPolicies.SYNC_NOW);
 
     this.isSyncing = true;
     await this.notifyListeners();

@@ -18,6 +18,8 @@ import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import { getAccountsWithBalances, type AccountWithBalance } from '@/lib/utils/balance';
 import { generateUUID } from '@/lib/utils/uuid';
+import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
+import { SecurityService } from '@/lib/security/securityService';
 import type { WalletAccount, WalletTransaction } from '@/types/wallet';
 
 export default function AccountsScreen() {
@@ -30,18 +32,14 @@ export default function AccountsScreen() {
   const [saving, setSaving] = useState(false);
 
   const loadLocalAccounts = useCallback(async (organizationId: string, archived: boolean) => {
-    const list = await OfflineDatabase.getAccounts(organizationId, archived);
+    const rawAccounts = await OfflineDatabase.getAccounts(organizationId, archived);
     const txs = await OfflineDatabase.getTransactions(organizationId, 500);
-    const withBalances = getAccountsWithBalances(list, txs);
+    const withBalances = getAccountsWithBalances(rawAccounts, txs);
     setAccounts(withBalances);
   }, []);
 
   useEffect(() => {
     async function init() {
-      if (orgId) {
-        await loadLocalAccounts(orgId, showArchived);
-        return;
-      }
       const session = await WalletAuthService.getSession();
       if (!session?.user) return;
       const { organizationId } = await WalletAuthService.resolveUserWallet(session.user.id);
@@ -49,9 +47,9 @@ export default function AccountsScreen() {
       await loadLocalAccounts(organizationId, showArchived);
     }
     init();
-  }, [loadLocalAccounts, showArchived, orgId]);
+  }, [showArchived, loadLocalAccounts]);
 
-  // 1. Subscribe to SyncEngine notifications so Accounts update automatically after sync
+  // 1. Subscribe to SyncEngine notifications so accounts update automatically after sync
   useEffect(() => {
     const unsubscribe = SyncEngine.subscribe((queueCount, isSyncing) => {
       if (!isSyncing && orgId) {
@@ -72,18 +70,27 @@ export default function AccountsScreen() {
 
   const handleCreateAccount = async () => {
     if (!orgId) return;
-    if (!accName.trim()) {
-      Alert.alert('Error', 'Please enter an account name.');
+    const sanitizedName = SecurityService.sanitizeText(accName, 50);
+    if (!sanitizedName) {
+      Alert.alert('Error', 'Please enter a valid account name.');
+      return;
+    }
+    const valValidation = SecurityService.validateAmount(startingVal, { min: -100_000_000, max: 1_000_000_000 });
+    if (!valValidation.isValid) {
+      Alert.alert('Error', valValidation.error || 'Please enter a valid starting balance.');
       return;
     }
 
     setSaving(true);
     try {
+      await RateLimiter.assertAllowed('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+      await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+
       const newAcc: WalletAccount = {
         id: generateUUID(),
         organization_id: orgId,
-        name: accName.trim(),
-        starting_value: parseFloat(startingVal) || 0,
+        name: sanitizedName,
+        starting_value: valValidation.value,
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -101,7 +108,8 @@ export default function AccountsScreen() {
       setModalVisible(false);
       await loadLocalAccounts(orgId, showArchived);
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to add account.');
+      const title = e?.name === 'RateLimitError' ? 'Rate Limit Exceeded' : 'Error';
+      Alert.alert(title, e?.message || 'Failed to add account.');
     } finally {
       setSaving(false);
     }

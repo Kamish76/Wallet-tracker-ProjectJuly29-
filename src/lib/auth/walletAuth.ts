@@ -3,6 +3,8 @@ import * as Linking from 'expo-linking';
 import { supabase, supabaseAdmin } from '@/lib/supabase/client';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { OfflineDatabase } from '@/lib/database/sqlite';
+import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
+import { SecurityService } from '@/lib/security/securityService';
 import type { Organization } from '@/types/wallet';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -51,16 +53,27 @@ export class WalletAuthService {
 
   // --- Auth Actions ---
   public static async loginWithEmail(email: string, password: string) {
+    await RateLimiter.assertAllowed('auth:login', RateLimitPolicies.AUTH_LOGIN);
+    const sanitizedEmail = SecurityService.sanitizeEmail(email);
+    if (!sanitizedEmail.isValid) {
+      throw new Error(sanitizedEmail.error || 'Invalid email address.');
+    }
+
     await this.clearAllUserData();
     const { data, error } = await supabase.auth.signInWithPassword({
-      email,
+      email: sanitizedEmail.sanitized,
       password,
     });
-    if (error) throw error;
+    if (error) {
+      await RateLimiter.recordAttempt('auth:login', RateLimitPolicies.AUTH_LOGIN);
+      throw error;
+    }
+    await RateLimiter.reset('auth:login');
     return data;
   }
 
   public static async loginWithGoogle() {
+    await RateLimiter.assertAllowed('auth:oauth', RateLimitPolicies.AUTH_OAUTH);
     await this.clearAllUserData();
     const redirectTo = Linking.createURL('auth/callback');
     console.log('[WalletAuthService] Google OAuth redirectTo:', redirectTo);
@@ -71,7 +84,10 @@ export class WalletAuthService {
         skipBrowserRedirect: true,
       },
     });
-    if (error) throw error;
+    if (error) {
+      await RateLimiter.recordAttempt('auth:oauth', RateLimitPolicies.AUTH_OAUTH);
+      throw error;
+    }
 
     if (data?.url) {
       const res = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
@@ -82,11 +98,16 @@ export class WalletAuthService {
             access_token: accessToken,
             refresh_token: refreshToken,
           });
-          if (sessionErr) throw sessionErr;
+          if (sessionErr) {
+            await RateLimiter.recordAttempt('auth:oauth', RateLimitPolicies.AUTH_OAUTH);
+            throw sessionErr;
+          }
+          await RateLimiter.reset('auth:oauth');
           return sessionData;
         }
       }
     }
+    await RateLimiter.reset('auth:oauth');
     return data;
   }
 

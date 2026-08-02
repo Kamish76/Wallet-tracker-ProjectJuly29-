@@ -35,7 +35,8 @@ export default function LoginScreen() {
         router.replace('/(tabs)/dashboard');
       }
     } catch (error: any) {
-      Alert.alert('Login Failed', error?.message || 'Invalid login credentials.');
+      const title = error?.name === 'RateLimitError' ? 'Rate Limit Exceeded' : 'Login Failed';
+      Alert.alert(title, error?.message || 'Invalid login credentials.');
     } finally {
       setLoading(false);
     }
@@ -51,7 +52,8 @@ export default function LoginScreen() {
         router.replace('/(tabs)/dashboard');
       }
     } catch (error: any) {
-      Alert.alert('Google Sign-In Error', error?.message || 'Failed to connect with Google.');
+      const title = error?.name === 'RateLimitError' ? 'Rate Limit Exceeded' : 'Google Sign-In Error';
+      Alert.alert(title, error?.message || 'Failed to connect with Google.');
     } finally {
       setLoading(false);
     }

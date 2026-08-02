@@ -15,6 +15,8 @@ import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import { generateUUID } from '@/lib/utils/uuid';
 import { WidgetService } from '@/lib/widget/widgetService';
+import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
+import { SecurityService } from '@/lib/security/securityService';
 import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/wallet';
 
 interface AddTransactionModalProps {
@@ -64,9 +66,9 @@ export function AddTransactionModal({
 
   const handleAddTransaction = async () => {
     if (!orgId || !userId) return;
-    const numAmount = parseFloat(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      Alert.alert('Invalid Amount', 'Transaction amount must be greater than 0.');
+    const amountValidation = SecurityService.validateAmount(amount, { min: 0.01 });
+    if (!amountValidation.isValid) {
+      Alert.alert('Invalid Amount', amountValidation.error || 'Please enter a valid amount.');
       return;
     }
     if (!accountId) {
@@ -83,6 +85,9 @@ export function AddTransactionModal({
 
     setSaving(true);
     try {
+      await RateLimiter.assertAllowed('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+      await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+
       const newTxId = generateUUID();
       const now = new Date().toISOString();
       const newTx: WalletTransaction = {
@@ -90,11 +95,11 @@ export function AddTransactionModal({
         organization_id: orgId,
         user_id: userId,
         type: txType,
-        amount: numAmount,
+        amount: amountValidation.value,
         account_id: accountId,
         transfer_to_account_id: txType === 'transfer' ? transferToId : null,
-        category: category.trim() || null,
-        description: notes.trim() || null,
+        category: SecurityService.sanitizeText(category, 60) || null,
+        description: SecurityService.sanitizeText(notes, 200) || null,
         created_at: now,
         occurred_at: now,
         sync_status: 'pending',
