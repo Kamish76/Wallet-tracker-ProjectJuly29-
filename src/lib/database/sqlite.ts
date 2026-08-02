@@ -159,6 +159,16 @@ export class OfflineDatabase {
     });
   }
 
+  public static async deleteAccount(id: string, organizationId: string): Promise<void> {
+    return this.withLock(async () => {
+      const db = await this.getDb();
+      await db.runAsync(
+        `DELETE FROM local_accounts WHERE id = ? AND organization_id = ?;`,
+        [id ?? null, organizationId ?? null]
+      );
+    });
+  }
+
   // --- Transactions CRUD ---
   public static async upsertTransaction(tx: WalletTransaction, syncStatus: 'synced' | 'pending' = 'synced'): Promise<void> {
     return this.withLock(async () => {
@@ -229,6 +239,16 @@ export class OfflineDatabase {
       await db.runAsync(
         `DELETE FROM local_transactions WHERE id = ? AND organization_id = ?;`,
         [id ?? null, organizationId ?? null]
+      );
+    });
+  }
+
+  public static async updateTransactionSyncStatus(id: string, syncStatus: 'synced' | 'pending'): Promise<void> {
+    return this.withLock(async () => {
+      const db = await this.getDb();
+      await db.runAsync(
+        `UPDATE local_transactions SET sync_status = ? WHERE id = ?;`,
+        [syncStatus ?? 'synced', id ?? null]
       );
     });
   }

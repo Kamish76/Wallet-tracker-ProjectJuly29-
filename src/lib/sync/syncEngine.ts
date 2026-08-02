@@ -287,6 +287,14 @@ export class SyncEngine {
         }
 
         if (success) {
+          if (item.action === 'CREATE_TRANSACTION' || item.action === 'UPDATE_TRANSACTION') {
+            try {
+              const payload = JSON.parse(item.payload);
+              if (payload.id) {
+                await OfflineDatabase.updateTransactionSyncStatus(payload.id, 'synced');
+              }
+            } catch {}
+          }
           await OfflineDatabase.deleteQueueItem(item.id);
         }
       } catch (e: any) {
@@ -308,6 +316,24 @@ export class SyncEngine {
 
   // --- Pull Latest Data from Supabase ---
   public static async pullLatestData(organizationId: string): Promise<void> {
+    const pendingItems = await OfflineDatabase.getPendingQueueItems();
+    const pendingCreateAccIds = new Set<string>();
+    const pendingCreateTxIds = new Set<string>();
+    const pendingCreateCatIds = new Set<string>();
+
+    for (const item of pendingItems) {
+      try {
+        const payload = JSON.parse(item.payload);
+        if (item.action === 'CREATE_ACCOUNT' && payload.id) {
+          pendingCreateAccIds.add(payload.id);
+        } else if (item.action === 'CREATE_TRANSACTION' && payload.id) {
+          pendingCreateTxIds.add(payload.id);
+        } else if (item.action === 'CREATE_CATEGORY' && payload.id) {
+          pendingCreateCatIds.add(payload.id);
+        }
+      } catch {}
+    }
+
     // 1. Fetch accounts
     const { data: accounts, error: accErr } = await supabase
       .from('wallet_accounts')
@@ -315,6 +341,13 @@ export class SyncEngine {
       .eq('organization_id', organizationId);
 
     if (!accErr && accounts) {
+      const serverAccIds = new Set(accounts.map((a) => a.id));
+      const localAccs = await OfflineDatabase.getAccounts(organizationId, true);
+      for (const localAcc of localAccs) {
+        if (!serverAccIds.has(localAcc.id) && !pendingCreateAccIds.has(localAcc.id)) {
+          await OfflineDatabase.deleteAccount(localAcc.id, organizationId);
+        }
+      }
       for (const acc of accounts) {
         await OfflineDatabase.upsertAccount({
           id: acc.id,
@@ -328,19 +361,20 @@ export class SyncEngine {
       }
     }
 
-    // 2. Fetch transactions
+    // 2. Fetch transactions (increased limit to 1000 to ensure deleted records are caught)
     const { data: txs, error: txErr } = await supabase
       .from('transactions')
       .select('*')
       .eq('organization_id', organizationId)
       .order('occurred_at', { ascending: false })
-      .limit(100);
+      .limit(1000);
 
     if (!txErr && txs) {
       const serverIds = new Set(txs.map((t) => t.id));
-      const localTxs = await OfflineDatabase.getTransactions(organizationId, 100);
+      const localTxs = await OfflineDatabase.getTransactions(organizationId, 1000);
       for (const localTx of localTxs) {
-        if (localTx.sync_status === 'synced' && !serverIds.has(localTx.id)) {
+        // Remove ANY local transaction that does not exist on the server AND is not pending creation offline
+        if (!serverIds.has(localTx.id) && !pendingCreateTxIds.has(localTx.id)) {
           await OfflineDatabase.deleteTransaction(localTx.id, organizationId);
         }
       }
@@ -369,6 +403,17 @@ export class SyncEngine {
       .eq('organization_id', organizationId);
 
     if (!catErr && categories) {
+      const serverCatIds = new Set(categories.map((c) => c.id));
+      const localCats = await OfflineDatabase.getCategories(organizationId);
+      for (const localCat of localCats) {
+        if (
+          localCat.is_custom &&
+          !serverCatIds.has(localCat.id) &&
+          !pendingCreateCatIds.has(localCat.id)
+        ) {
+          await OfflineDatabase.deleteCategory(localCat.id, organizationId);
+        }
+      }
       for (const cat of categories) {
         const words = (cat.normalized_name || '')
           .split(' ')
