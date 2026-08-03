@@ -5,6 +5,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.3.0] - Offline Transaction & Sub-Account Management Release (2026-08-03)
+
+### 🌟 New Features & Capabilities
+
+- **Full Offline-First Transaction Editing & Deletion**:
+  - Engineered a comprehensive **Transaction Editor Modal** (`src/components/EditTransactionModal.tsx`, 631 lines) supporting instant editing of transaction amounts, titles, preset/custom categories, assigned sub-accounts, date/times, notes, and income/expense/transfer types.
+  - Implemented local SQLite persistence (`updateTransaction`, `deleteTransaction` in `OfflineDatabase`) with automatic net balance and sub-account balance recalculation.
+  - Integrated bidirectional offline synchronization queue actions (**`UPDATE_TRANSACTION`**, **`DELETE_TRANSACTION`**) in `SyncEngine.processQueueItem()`, ensuring changes made offline automatically synchronize with Supabase upon reconnection.
+  - Upgraded both the **Dashboard** (`/dashboard`) and **Transactions** screen (`/transactions`) with quick-action cards, category badges, account names, and 1-tap edit/delete modal triggers.
+
+- **Full Offline-First Sub-Account Editing & Deletion**:
+  - Engineered an interactive sub-account management editor on the **Accounts** screen (`/accounts`), allowing users to update account names, account types (`Cash`, `Bank`, `Credit Card`, `Digital Wallet`, `Investment`), starting balances, currencies, and descriptions.
+  - **Dynamic Balance Recalculation**: Changing an account's starting balance or modifying transactions automatically recomputes current balances locally and triggers background widget refresh.
+  - **Rule #2 Enforcement (Account Deletion Safeguard)**: Before any account deletion attempt, OrgWallet queries `getAccountTransactionsCount(id)` in local SQLite. If an account is referenced by existing transactions, hard deletion is blocked and the user is guided to safely archive (`is_active = false`) the account instead, protecting historical ledger integrity.
+  - Added offline synchronization queue actions (**`UPDATE_ACCOUNT`**, **`DELETE_ACCOUNT`**) with automatic retry and conflict resolution policies.
+
+- **Settings Screen Release Version Tracking**:
+  - Updated the About section in **Settings** (`/settings`) to dynamically display **`OrgWallet v0.3.0`**, keeping users informed of their installed release build.
+
+### 🔧 Technical Improvements & Fixes
+
+- **SQLite FIFO Mutex Serialization (`withLock`)**:
+  - Wrapped all new transaction and sub-account CRUD and count operations (`getAccountTransactionsCount`, `updateTransaction`, `deleteTransaction`, `updateAccount`, `deleteAccount`) in asynchronous FIFO mutex locks (`withLock`), preventing native Android SQLite statement collisions.
+- **Android System Java 25 / OpenJDK 21 Alignment**:
+  - Verified and maintained Gradle compatibility for command-line (`gradlew.bat`) and IDE builds using Android Studio's bundled OpenJDK 21 (`W:/Dev/Android/Android Studio/jbr`).
+
+---
+
 ## [0.2.0] - Live Android Home Screen Widget & Branding Release (2026-07-31)
 
 ### 🌟 New Features & Capabilities

@@ -10,15 +10,16 @@ import {
   Image,
 } from 'react-native';
 import { router } from 'expo-router';
-import { RefreshCw, LogOut, Check, Wifi, Database, ShieldAlert } from 'lucide-react-native';
+import { RefreshCw, LogOut, Check, Wifi, Database, ShieldAlert, Tag } from 'lucide-react-native';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { WidgetService } from '@/lib/widget/widgetService';
+import { ManageCategoriesModal } from '@/components/ManageCategoriesModal';
 import Slider from '@react-native-community/slider';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
-import type { SyncSettings, SyncMode, ConflictResolutionRule } from '@/types/wallet';
+import type { SyncSettings, SyncMode, ConflictResolutionRule, WalletCategory } from '@/types/wallet';
 
 export default function SettingsScreen() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -33,11 +34,28 @@ export default function SettingsScreen() {
   const [widgetOpacity, setWidgetOpacity] = useState(0.85);
   const [widgetBalance, setWidgetBalance] = useState('$0.00');
   const [updatingWidget, setUpdatingWidget] = useState(false);
+  const [orgId, setOrgId] = useState<string | null>(null);
+  const [categories, setCategories] = useState<WalletCategory[]>([]);
+  const [categoriesModalVisible, setCategoriesModalVisible] = useState(false);
+
+  const loadCategories = async (organizationId: string) => {
+    try {
+      const cats = await OfflineDatabase.getCategories(organizationId);
+      setCategories(cats);
+    } catch (e) {
+      console.error('[Settings] Error loading categories:', e);
+    }
+  };
 
   useEffect(() => {
     async function load() {
       const session = await WalletAuthService.getSession();
       setUserEmail(session?.user?.email || 'Logged In');
+      if (session?.user) {
+        const { organizationId } = await WalletAuthService.resolveUserWallet(session.user.id);
+        setOrgId(organizationId);
+        await loadCategories(organizationId);
+      }
       const st = await SyncEngine.getSettings();
       setSettings(st);
       const count = await OfflineDatabase.getQueueCount();
@@ -52,9 +70,12 @@ export default function SettingsScreen() {
     const unsubscribe = SyncEngine.subscribe((count, isSyncing) => {
       setPendingCount(count);
       setSyncing(isSyncing);
+      if (!isSyncing && orgId) {
+        loadCategories(orgId);
+      }
     });
     return () => unsubscribe();
-  }, []);
+  }, [orgId]);
 
   const handleUpdateMode = async (mode: SyncMode) => {
     const updated = await SyncEngine.updateSettings({ mode });
@@ -356,13 +377,69 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Transaction Categories Card */}
+      <View style={styles.card}>
+        <View style={styles.cardHeaderRow}>
+          <Tag size={18} color={Colors.primary} />
+          <Text style={styles.cardTitle}>Transaction Categories</Text>
+        </View>
+        <Text style={styles.cardDescription}>
+          Manage preset and custom income/expense categories for your personal wallet.
+        </Text>
+
+        {/* Category Pill preview badges */}
+        <View style={styles.categoriesPreviewRow}>
+          {categories.slice(0, 8).map((cat) => {
+            const isIncome = cat.aliases?.includes('type:income');
+            return (
+              <View
+                key={cat.id}
+                style={[
+                  styles.categoryBadge,
+                  isIncome ? styles.categoryBadgeIncome : styles.categoryBadgeExpense,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.categoryBadgeText,
+                    isIncome ? styles.categoryTextIncome : styles.categoryTextExpense,
+                  ]}
+                >
+                  {cat.display_name}
+                </Text>
+              </View>
+            );
+          })}
+          {categories.length > 8 && (
+            <View style={styles.categoryBadgeMore}>
+              <Text style={styles.categoryBadgeText}>+{categories.length - 8} more</Text>
+            </View>
+          )}
+        </View>
+
+        <TouchableOpacity
+          style={styles.manageCategoriesButton}
+          onPress={() => setCategoriesModalVisible(true)}
+        >
+          <Tag size={18} color={Colors.background} />
+          <Text style={styles.manageCategoriesText}>Manage Categories</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* About Section */}
       <View style={styles.aboutCard}>
-        <Text style={styles.aboutTitle}>OrgWallet v0.1.0</Text>
+        <Text style={styles.aboutTitle}>OrgWallet v0.3.0</Text>
         <Text style={styles.aboutText}>
           Android-optimized mobile app for OrgFinance Personal Wallet tracking. Built with Expo React Native, Supabase, and SQLite offline synchronization.
         </Text>
       </View>
+
+      <ManageCategoriesModal
+        visible={categoriesModalVisible}
+        onClose={() => setCategoriesModalVisible(false)}
+        orgId={orgId}
+        onCategoriesChanged={() => orgId && loadCategories(orgId)}
+      />
     </ScrollView>
   );
 }
@@ -581,6 +658,59 @@ const styles = StyleSheet.create({
     width: 1,
     height: 18,
     backgroundColor: '#404040',
+  },
+  categoriesPreviewRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Tokens.spacing.xs,
+    marginVertical: Tokens.spacing.md,
+  },
+  categoryBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Tokens.radius.full,
+    borderWidth: 1,
+  },
+  categoryBadgeIncome: {
+    backgroundColor: Colors.incomeBg,
+    borderColor: Colors.income,
+  },
+  categoryBadgeExpense: {
+    backgroundColor: Colors.expenseBg,
+    borderColor: Colors.expense,
+  },
+  categoryBadgeMore: {
+    backgroundColor: Colors.surfaceElevated,
+    borderColor: Colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: Tokens.radius.full,
+    borderWidth: 1,
+  },
+  categoryBadgeText: {
+    ...Tokens.typography.caption,
+    fontWeight: '600',
+    color: Colors.textWhite,
+  },
+  categoryTextIncome: {
+    color: Colors.income,
+  },
+  categoryTextExpense: {
+    color: Colors.expense,
+  },
+  manageCategoriesButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: Tokens.radius.md,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Tokens.spacing.sm,
+  },
+  manageCategoriesText: {
+    ...Tokens.typography.body,
+    color: Colors.background,
+    fontWeight: '700',
   },
 });
 

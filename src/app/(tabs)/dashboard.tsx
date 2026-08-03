@@ -7,13 +7,16 @@ import {
   RefreshControl,
   StyleSheet,
   Image,
+  Alert,
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus } from 'lucide-react-native';
+import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus, Edit2, Trash2 } from 'lucide-react-native';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { AddTransactionModal } from '@/components/AddTransactionModal';
+import { EditTransactionModal } from '@/components/EditTransactionModal';
+import { WidgetService } from '@/lib/widget/widgetService';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import * as Linking from 'expo-linking';
@@ -32,9 +35,47 @@ export default function DashboardScreen() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [selectedTx, setSelectedTx] = useState<WalletTransaction | null>(null);
   const [initialModalTxType, setInitialModalTxType] = useState<TransactionType | undefined>(undefined);
   const deepLinkUrl = Linking.useURL();
   const { type: paramTxType } = useLocalSearchParams<{ type?: string }>();
+
+  const handleEditTransaction = (tx: WalletTransaction) => {
+    setSelectedTx(tx);
+    setEditModalVisible(true);
+  };
+
+  const handleDeleteConfirm = (tx: WalletTransaction) => {
+    if (!orgId) return;
+    Alert.alert(
+      'Delete Transaction',
+      `Delete ${tx.category || 'this transaction'} of $${Number(tx.amount).toFixed(2)}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await OfflineDatabase.deleteTransaction(tx.id, orgId);
+              await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', {
+                id: tx.id,
+                organization_id: orgId,
+              });
+              if (SyncEngine.getOnlineStatus()) {
+                SyncEngine.syncNow(orgId).catch(() => {});
+              }
+              WidgetService.refreshWidgetData(orgId || undefined).catch(() => {});
+              await loadLocalData(orgId);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to delete transaction.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   useEffect(() => {
     if (
@@ -221,7 +262,12 @@ export default function DashboardScreen() {
         </View>
       ) : (
         transactions.map((tx) => (
-          <View key={tx.id} style={styles.txCard}>
+          <TouchableOpacity
+            key={tx.id}
+            style={styles.txCard}
+            onPress={() => handleEditTransaction(tx)}
+            activeOpacity={0.7}
+          >
             <View style={styles.txLeft}>
               <View
                 style={[
@@ -250,22 +296,46 @@ export default function DashboardScreen() {
                 </Text>
               </View>
             </View>
-            <Text
-              style={[
-                styles.txAmount,
-                {
-                  color:
-                    tx.type === 'income'
-                      ? Colors.income
-                      : tx.type === 'transfer'
-                      ? Colors.transfer
-                      : Colors.expense,
-                },
-              ]}
-            >
-              {tx.type === 'income' ? '+' : '-'}${Number(tx.amount).toFixed(2)}
-            </Text>
-          </View>
+            <View style={styles.txRight}>
+              <Text
+                style={[
+                  styles.txAmount,
+                  {
+                    color:
+                      tx.type === 'income'
+                        ? Colors.income
+                        : tx.type === 'transfer'
+                        ? Colors.transfer
+                        : Colors.expense,
+                  },
+                ]}
+              >
+                {tx.type === 'income' ? '+' : '-'}${Number(tx.amount).toFixed(2)}
+              </Text>
+              <View style={styles.txActions}>
+                <TouchableOpacity
+                  style={styles.actionBtn}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleEditTransaction(tx);
+                  }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Edit2 size={15} color={Colors.textMuted} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionBtn, { marginLeft: 14 }]}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleDeleteConfirm(tx);
+                  }}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Trash2 size={15} color={Colors.error} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
         ))
       )}
       </ScrollView>
@@ -294,6 +364,22 @@ export default function DashboardScreen() {
         userId={userId}
         accounts={accounts}
         initialType={initialModalTxType}
+      />
+
+      {/* Shared Edit Transaction Modal */}
+      <EditTransactionModal
+        visible={editModalVisible}
+        onClose={() => {
+          setEditModalVisible(false);
+          setSelectedTx(null);
+        }}
+        onSuccess={() => {
+          if (orgId) loadLocalData(orgId);
+        }}
+        orgId={orgId}
+        userId={userId}
+        accounts={accounts}
+        transaction={selectedTx}
       />
     </View>
   );
@@ -492,5 +578,17 @@ const styles = StyleSheet.create({
   txAmount: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  txRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  txActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  actionBtn: {
+    padding: 4,
   },
 });

@@ -194,6 +194,50 @@ export class SyncEngine {
           } else {
             throw error;
           }
+        } else if (item.action === 'UPDATE_TRANSACTION') {
+          const validAccountId =
+            payload.account_id && isValidUUID(payload.account_id)
+              ? payload.account_id
+              : null;
+          const validTransferToId =
+            payload.transfer_to_account_id &&
+            isValidUUID(payload.transfer_to_account_id)
+              ? payload.transfer_to_account_id
+              : null;
+
+          const { error } = await supabase
+            .from('transactions')
+            .update({
+              type: payload.type,
+              amount: payload.amount,
+              account_id: validAccountId,
+              transfer_to_account_id: validTransferToId,
+              category: payload.category || null,
+              description: payload.description || '',
+              occurred_at: payload.occurred_at || new Date().toISOString(),
+            })
+            .eq('id', payload.id)
+            .eq('organization_id', payload.organization_id);
+
+          if (!error) success = true;
+          else if (conflictRule === 'server_wins') {
+            success = true;
+          } else {
+            throw error;
+          }
+        } else if (item.action === 'DELETE_TRANSACTION') {
+          const { error } = await supabase
+            .from('transactions')
+            .delete()
+            .eq('id', payload.id)
+            .eq('organization_id', payload.organization_id);
+
+          if (!error) success = true;
+          else if (conflictRule === 'server_wins') {
+            success = true;
+          } else {
+            throw error;
+          }
         } else if (item.action === 'CREATE_ACCOUNT') {
           const accId = isValidUUID(payload.id) ? payload.id : generateUUID();
           const { error } = await supabase.from('wallet_accounts').insert({
@@ -214,9 +258,69 @@ export class SyncEngine {
             .eq('organization_id', payload.organization_id);
           if (!error) success = true;
           else throw error;
+        } else if (item.action === 'UPDATE_ACCOUNT') {
+          const { error } = await supabase
+            .from('wallet_accounts')
+            .update({
+              name: payload.name,
+              starting_value: payload.starting_value,
+              is_active: payload.is_active ?? true,
+              updated_at: payload.updated_at || new Date().toISOString(),
+            })
+            .eq('id', payload.id)
+            .eq('organization_id', payload.organization_id);
+          if (!error) success = true;
+          else throw error;
+        } else if (item.action === 'DELETE_ACCOUNT') {
+          const { error } = await supabase
+            .from('wallet_accounts')
+            .delete()
+            .eq('id', payload.id)
+            .eq('organization_id', payload.organization_id);
+
+          if (!error) success = true;
+          else if (conflictRule === 'server_wins') {
+            success = true;
+          } else {
+            throw error;
+          }
+        } else if (
+          item.action === 'CREATE_CATEGORY' ||
+          item.action === 'UPDATE_CATEGORY'
+        ) {
+          const catId = isValidUUID(payload.id) ? payload.id : generateUUID();
+          const { error } = await supabase
+            .from('transaction_categories')
+            .upsert({
+              id: catId,
+              organization_id: payload.organization_id,
+              normalized_name: (payload.normalized_name || '').toLowerCase(),
+              aliases: payload.aliases || [],
+              is_custom: Boolean(payload.is_custom),
+              created_at: payload.created_at || new Date().toISOString(),
+              updated_at: payload.updated_at || new Date().toISOString(),
+            });
+          if (!error) success = true;
+          else throw error;
+        } else if (item.action === 'DELETE_CATEGORY') {
+          const { error } = await supabase
+            .from('transaction_categories')
+            .delete()
+            .eq('id', payload.id)
+            .eq('organization_id', payload.organization_id);
+          if (!error) success = true;
+          else throw error;
         }
 
         if (success) {
+          if (item.action === 'CREATE_TRANSACTION' || item.action === 'UPDATE_TRANSACTION') {
+            try {
+              const payload = JSON.parse(item.payload);
+              if (payload.id) {
+                await OfflineDatabase.updateTransactionSyncStatus(payload.id, 'synced');
+              }
+            } catch {}
+          }
           await OfflineDatabase.deleteQueueItem(item.id);
         }
       } catch (e: any) {
@@ -238,6 +342,24 @@ export class SyncEngine {
 
   // --- Pull Latest Data from Supabase ---
   public static async pullLatestData(organizationId: string): Promise<void> {
+    const pendingItems = await OfflineDatabase.getPendingQueueItems();
+    const pendingCreateAccIds = new Set<string>();
+    const pendingCreateTxIds = new Set<string>();
+    const pendingCreateCatIds = new Set<string>();
+
+    for (const item of pendingItems) {
+      try {
+        const payload = JSON.parse(item.payload);
+        if ((item.action === 'CREATE_ACCOUNT' || item.action === 'UPDATE_ACCOUNT') && payload.id) {
+          pendingCreateAccIds.add(payload.id);
+        } else if (item.action === 'CREATE_TRANSACTION' && payload.id) {
+          pendingCreateTxIds.add(payload.id);
+        } else if (item.action === 'CREATE_CATEGORY' && payload.id) {
+          pendingCreateCatIds.add(payload.id);
+        }
+      } catch {}
+    }
+
     // 1. Fetch accounts
     const { data: accounts, error: accErr } = await supabase
       .from('wallet_accounts')
@@ -245,6 +367,13 @@ export class SyncEngine {
       .eq('organization_id', organizationId);
 
     if (!accErr && accounts) {
+      const serverAccIds = new Set(accounts.map((a) => a.id));
+      const localAccs = await OfflineDatabase.getAccounts(organizationId, true);
+      for (const localAcc of localAccs) {
+        if (!serverAccIds.has(localAcc.id) && !pendingCreateAccIds.has(localAcc.id)) {
+          await OfflineDatabase.deleteAccount(localAcc.id, organizationId);
+        }
+      }
       for (const acc of accounts) {
         await OfflineDatabase.upsertAccount({
           id: acc.id,
@@ -258,15 +387,23 @@ export class SyncEngine {
       }
     }
 
-    // 2. Fetch transactions
+    // 2. Fetch transactions (increased limit to 1000 to ensure deleted records are caught)
     const { data: txs, error: txErr } = await supabase
       .from('transactions')
       .select('*')
       .eq('organization_id', organizationId)
       .order('occurred_at', { ascending: false })
-      .limit(100);
+      .limit(1000);
 
     if (!txErr && txs) {
+      const serverIds = new Set(txs.map((t) => t.id));
+      const localTxs = await OfflineDatabase.getTransactions(organizationId, 1000);
+      for (const localTx of localTxs) {
+        // Remove ANY local transaction that does not exist on the server AND is not pending creation offline
+        if (!serverIds.has(localTx.id) && !pendingCreateTxIds.has(localTx.id)) {
+          await OfflineDatabase.deleteTransaction(localTx.id, organizationId);
+        }
+      }
       for (const tx of txs) {
         await OfflineDatabase.upsertTransaction({
           id: tx.id,
@@ -282,6 +419,45 @@ export class SyncEngine {
           created_at: tx.created_at,
           occurred_at: tx.occurred_at,
         }, 'synced');
+      }
+    }
+
+    // 3. Fetch transaction categories
+    const { data: categories, error: catErr } = await supabase
+      .from('transaction_categories')
+      .select('*')
+      .eq('organization_id', organizationId);
+
+    if (!catErr && categories) {
+      const serverCatIds = new Set(categories.map((c) => c.id));
+      const localCats = await OfflineDatabase.getCategories(organizationId);
+      for (const localCat of localCats) {
+        if (
+          localCat.is_custom &&
+          !serverCatIds.has(localCat.id) &&
+          !pendingCreateCatIds.has(localCat.id)
+        ) {
+          await OfflineDatabase.deleteCategory(localCat.id, organizationId);
+        }
+      }
+      for (const cat of categories) {
+        const words = (cat.normalized_name || '')
+          .split(' ')
+          .map((w: string) => (w.length > 0 ? w[0].toUpperCase() + w.slice(1) : ''))
+          .join(' ');
+        await OfflineDatabase.upsertCategory(
+          {
+            id: cat.id,
+            organization_id: cat.organization_id,
+            normalized_name: cat.normalized_name,
+            display_name: words,
+            aliases: cat.aliases || [],
+            is_custom: Boolean(cat.is_custom),
+            created_at: cat.created_at,
+            updated_at: cat.updated_at,
+          },
+          'synced'
+        );
       }
     }
   }

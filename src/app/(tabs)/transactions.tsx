@@ -10,12 +10,14 @@ import {
   StyleSheet,
   RefreshControl,
 } from 'react-native';
-import { Plus, X, Filter, RefreshCw } from 'lucide-react-native';
+import { Plus, X, Filter, RefreshCw, Edit2, Trash2 } from 'lucide-react-native';
 import { useFocusEffect } from 'expo-router';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { AddTransactionModal } from '@/components/AddTransactionModal';
+import { EditTransactionModal } from '@/components/EditTransactionModal';
+import { WidgetService } from '@/lib/widget/widgetService';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import { getAccountBadgeText } from '@/lib/utils/balance';
@@ -27,9 +29,47 @@ export default function TransactionsScreen() {
   const [accounts, setAccounts] = useState<WalletAccount[]>([]);
   const [filterType, setFilterType] = useState<string>('all');
   const [modalVisible, setModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [selectedTx, setSelectedTx] = useState<WalletTransaction | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  const handleEditTransaction = (tx: WalletTransaction) => {
+    setSelectedTx(tx);
+    setEditModalVisible(true);
+  };
+
+  const handleDeleteConfirm = (tx: WalletTransaction) => {
+    if (!orgId) return;
+    Alert.alert(
+      'Delete Transaction',
+      `Delete ${tx.category || 'this transaction'} of $${Number(tx.amount).toFixed(2)}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await OfflineDatabase.deleteTransaction(tx.id, orgId);
+              await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', {
+                id: tx.id,
+                organization_id: orgId,
+              });
+              if (SyncEngine.getOnlineStatus()) {
+                SyncEngine.syncNow(orgId).catch(() => {});
+              }
+              WidgetService.refreshWidgetData(orgId || undefined).catch(() => {});
+              await loadLocalData(orgId);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to delete transaction.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const loadLocalData = useCallback(async (organizationId: string) => {
     const txs = await OfflineDatabase.getTransactions(organizationId, 100);
@@ -140,7 +180,12 @@ export default function TransactionsScreen() {
           </View>
         ) : (
           filteredTransactions.map((tx) => (
-            <View key={tx.id} style={styles.txCard}>
+            <TouchableOpacity
+              key={tx.id}
+              style={styles.txCard}
+              onPress={() => handleEditTransaction(tx)}
+              activeOpacity={0.7}
+            >
               <View style={styles.txLeft}>
                 <View
                   style={[
@@ -169,22 +214,46 @@ export default function TransactionsScreen() {
                   </Text>
                 </View>
               </View>
-              <Text
-                style={[
-                  styles.txAmount,
-                  {
-                    color:
-                      tx.type === 'income'
-                        ? Colors.income
-                        : tx.type === 'transfer'
-                        ? Colors.transfer
-                        : Colors.expense,
-                  },
-                ]}
-              >
-                {tx.type === 'income' ? '+' : '-'}${Number(tx.amount).toFixed(2)}
-              </Text>
-            </View>
+              <View style={styles.txRight}>
+                <Text
+                  style={[
+                    styles.txAmount,
+                    {
+                      color:
+                        tx.type === 'income'
+                          ? Colors.income
+                          : tx.type === 'transfer'
+                          ? Colors.transfer
+                          : Colors.expense,
+                    },
+                  ]}
+                >
+                  {tx.type === 'income' ? '+' : '-'}${Number(tx.amount).toFixed(2)}
+                </Text>
+                <View style={styles.txActions}>
+                  <TouchableOpacity
+                    style={styles.actionBtn}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleEditTransaction(tx);
+                    }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Edit2 size={15} color={Colors.textMuted} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { marginLeft: 14 }]}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleDeleteConfirm(tx);
+                    }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Trash2 size={15} color={Colors.error} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>
@@ -210,6 +279,22 @@ export default function TransactionsScreen() {
         orgId={orgId}
         userId={userId}
         accounts={accounts}
+      />
+
+      {/* Shared Edit Transaction Modal */}
+      <EditTransactionModal
+        visible={editModalVisible}
+        onClose={() => {
+          setEditModalVisible(false);
+          setSelectedTx(null);
+        }}
+        onSuccess={() => {
+          if (orgId) loadLocalData(orgId);
+        }}
+        orgId={orgId}
+        userId={userId}
+        accounts={accounts}
+        transaction={selectedTx}
       />
     </View>
   );
@@ -302,8 +387,20 @@ const styles = StyleSheet.create({
     color: Colors.textDim,
   },
   txAmount: {
-    fontSize: 16,
+    ...Tokens.typography.h3,
     fontWeight: '700',
+  },
+  txRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  txActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  actionBtn: {
+    padding: 4,
   },
   fabButton: {
     position: 'absolute',
