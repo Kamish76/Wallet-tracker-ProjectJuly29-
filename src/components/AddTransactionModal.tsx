@@ -303,7 +303,7 @@ export function AddTransactionModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.formScroll} showsVerticalScrollIndicator={false}>
+          <ScrollView style={[styles.formScroll, { flexShrink: 1 }]} showsVerticalScrollIndicator={true}>
             {/* Type Selector */}
             <View style={styles.typeSelectorRow}>
               {(
@@ -735,7 +735,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   formScroll: {
-    maxHeight: '40%', // Limit height so keypad is visible
+    flexShrink: 1,
+    paddingRight: 8,
   },
   displayArea: {
     backgroundColor: Colors.surfaceElevated,
