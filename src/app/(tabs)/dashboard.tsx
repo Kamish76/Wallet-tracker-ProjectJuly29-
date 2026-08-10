@@ -8,9 +8,11 @@ import {
   StyleSheet,
   Image,
   Alert,
+  FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus, Edit2, Trash2 } from 'lucide-react-native';
+import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus, Edit2, Trash2, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
@@ -38,8 +40,18 @@ export default function DashboardScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedTx, setSelectedTx] = useState<WalletTransaction | null>(null);
   const [initialModalTxType, setInitialModalTxType] = useState<TransactionType | undefined>(undefined);
+  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
   const deepLinkUrl = Linking.useURL();
   const { type: paramTxType } = useLocalSearchParams<{ type?: string }>();
+
+  const getMonthStartEnd = (date: Date) => {
+    const start = new Date(date.getFullYear(), date.getMonth(), 1);
+    const end = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+    return { start, end };
+  };
 
   const handleEditTransaction = (tx: WalletTransaction) => {
     setSelectedTx(tx);
@@ -66,8 +78,7 @@ export default function DashboardScreen() {
               if (SyncEngine.getOnlineStatus()) {
                 SyncEngine.syncNow(orgId).catch(() => {});
               }
-              WidgetService.refreshWidgetData(orgId || undefined).catch(() => {});
-              await loadLocalData(orgId);
+              await loadLocalData(orgId, undefined, 0);
             } catch (e: any) {
               Alert.alert('Error', e?.message || 'Failed to delete transaction.');
             }
@@ -112,16 +123,36 @@ export default function DashboardScreen() {
     }
   }, [deepLinkUrl]);
 
-  const loadLocalData = useCallback(async (organizationId: string) => {
+  const loadLocalData = useCallback(async (organizationId: string, monthOverride?: Date, currentOffset = 0) => {
     try {
+      const monthToUse = monthOverride || currentMonth;
+      const { start, end } = getMonthStartEnd(monthToUse);
+      
       const localAccs = await OfflineDatabase.getAccounts(organizationId);
-      const localTxs = await OfflineDatabase.getTransactions(organizationId, 500);
+      const localTxs = await OfflineDatabase.getTransactions(
+        organizationId,
+        15, // Preset to 15 per scroll
+        currentOffset,
+        start.toISOString(),
+        end.toISOString()
+      );
       setAccounts(localAccs);
-      setTransactions(localTxs);
+
+      if (currentOffset === 0) {
+        setTransactions(localTxs);
+      } else {
+        setTransactions((prev) => {
+          const existingIds = new Set(prev.map(t => t.id));
+          const newTxs = localTxs.filter(t => !existingIds.has(t.id));
+          return [...prev, ...newTxs];
+        });
+      }
+      setOffset(currentOffset + 15);
+      setHasMore(localTxs.length === 15);
     } catch (error) {
       console.error('[Dashboard] Error loading SQLite data:', error);
     }
-  }, []);
+  }, [currentMonth]); // currentMonth is in deps, which is correct, but let's decouple init
 
   useEffect(() => {
     async function init() {
@@ -130,10 +161,11 @@ export default function DashboardScreen() {
       setUserId(session.user.id);
       const { organizationId } = await WalletAuthService.resolveUserWallet(session.user.id);
       setOrgId(organizationId);
-      await loadLocalData(organizationId);
+      // init is called once on mount
+      await loadLocalData(organizationId, new Date());
     }
     init();
-  }, [loadLocalData]);
+  }, []); // Remove loadLocalData dependency to prevent re-running init on month change
 
   // 1. Subscribe to SyncEngine notifications so Dashboard updates automatically after sync
   useEffect(() => {
@@ -158,28 +190,40 @@ export default function DashboardScreen() {
     if (!orgId) return;
     setRefreshing(true);
     await SyncEngine.syncNow(orgId);
-    await loadLocalData(orgId);
+    await loadLocalData(orgId, undefined, 0);
     setRefreshing(false);
   };
+
+  const handlePrevMonth = () => {
+    const newMonth = new Date(currentMonth);
+    newMonth.setMonth(newMonth.getMonth() - 1);
+    setCurrentMonth(newMonth);
+    if (orgId) loadLocalData(orgId, newMonth, 0);
+  };
+
+  const handleNextMonth = () => {
+    const newMonth = new Date(currentMonth);
+    newMonth.setMonth(newMonth.getMonth() + 1);
+    setCurrentMonth(newMonth);
+    if (orgId) loadLocalData(orgId, newMonth, 0);
+  };
+
+  const handleLoadMore = async () => {
+    if (!hasMore || isFetchingMore || !orgId) return;
+    setIsFetchingMore(true);
+    await loadLocalData(orgId, undefined, offset);
+    setIsFetchingMore(false);
+  };
+
+  const monthLabel = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   // Calculate totals from accounts & all transactions using OrgFinance web app logic
   const totalBalance = calculateTotalNetBalance(accounts, transactions);
   const totalIncome = calculateTotalIncome(transactions);
   const totalExpense = calculateTotalExpense(transactions);
 
-  return (
-    <View style={{ flex: 1, backgroundColor: Colors.background }}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={Colors.primary}
-          />
-        }
-      >
+  const renderHeader = () => (
+    <>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTitleRow}>
@@ -238,32 +282,68 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      {/* Month Selector for Transactions */}
+      <View style={styles.monthSelectorRow}>
+        <TouchableOpacity onPress={handlePrevMonth} style={styles.monthButton}>
+          <ChevronLeft size={20} color={Colors.primary} />
+        </TouchableOpacity>
+        <Text style={styles.monthLabel}>{monthLabel}</Text>
+        <TouchableOpacity onPress={handleNextMonth} style={styles.monthButton}>
+          <ChevronRight size={20} color={Colors.primary} />
+        </TouchableOpacity>
+      </View>
+
       {/* Recent Transactions Section */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Recent Transactions</Text>
+        <Text style={styles.sectionTitle}>Transactions</Text>
         <TouchableOpacity onPress={() => router.push('/(tabs)/transactions')}>
           <Text style={styles.seeAllText}>See All</Text>
         </TouchableOpacity>
       </View>
+    </>
+  );
 
-      {transactions.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>No recent transactions</Text>
-          <Text style={styles.emptySubtitle}>
-            Transactions added offline or synced will appear here.
-          </Text>
+  return (
+    <View style={{ flex: 1, backgroundColor: Colors.background }}>
+      <FlatList
+        data={transactions}
+        keyExtractor={(item) => item.id}
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={Colors.primary}
+          />
+        }
+        ListHeaderComponent={renderHeader}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        ListEmptyComponent={
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>No recent transactions</Text>
+            <Text style={styles.emptySubtitle}>
+              Transactions added offline or synced will appear here.
+            </Text>
+            <TouchableOpacity
+              style={styles.addTransactionButton}
+              onPress={() => setModalVisible(true)}
+            >
+              <Plus size={16} color={Colors.background} />
+              <Text style={styles.addTransactionButtonText}>Add Offline Transaction</Text>
+            </TouchableOpacity>
+          </View>
+        }
+        ListFooterComponent={
+          isFetchingMore ? (
+            <View style={{ paddingVertical: 20 }}>
+              <ActivityIndicator size="small" color={Colors.primary} />
+            </View>
+          ) : null
+        }
+        renderItem={({ item: tx }) => (
           <TouchableOpacity
-            style={styles.addTransactionButton}
-            onPress={() => setModalVisible(true)}
-          >
-            <Plus size={16} color={Colors.background} />
-            <Text style={styles.addTransactionButtonText}>Add Offline Transaction</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        transactions.map((tx) => (
-          <TouchableOpacity
-            key={tx.id}
             style={styles.txCard}
             onPress={() => handleEditTransaction(tx)}
             activeOpacity={0.7}
@@ -336,9 +416,8 @@ export default function DashboardScreen() {
               </View>
             </View>
           </TouchableOpacity>
-        ))
-      )}
-      </ScrollView>
+        )}
+      />
 
       {/* Floating Add Transaction Button (FAB) at bottom-right */}
       <TouchableOpacity
@@ -358,7 +437,7 @@ export default function DashboardScreen() {
           setInitialModalTxType(undefined);
         }}
         onSuccess={() => {
-          if (orgId) loadLocalData(orgId);
+          if (orgId) loadLocalData(orgId, undefined, 0);
         }}
         orgId={orgId}
         userId={userId}
@@ -374,7 +453,7 @@ export default function DashboardScreen() {
           setSelectedTx(null);
         }}
         onSuccess={() => {
-          if (orgId) loadLocalData(orgId);
+          if (orgId) loadLocalData(orgId, undefined, 0);
         }}
         orgId={orgId}
         userId={userId}
@@ -590,5 +669,25 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     padding: 4,
+  },
+  monthSelectorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Tokens.spacing.lg,
+    marginBottom: Tokens.spacing.sm,
+  },
+  monthButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.surfaceElevated,
+  },
+  monthLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textWhite,
+    marginHorizontal: Tokens.spacing.md,
+    minWidth: 140,
+    textAlign: 'center',
   },
 });

@@ -208,13 +208,32 @@ export class OfflineDatabase {
     });
   }
 
-  public static async getTransactions(organizationId: string, limit = 50): Promise<WalletTransaction[]> {
+  public static async getTransactions(
+    organizationId: string,
+    limit = 50,
+    offset = 0,
+    startDate?: string,
+    endDate?: string
+  ): Promise<WalletTransaction[]> {
     return this.withLock(async () => {
       const db = await this.getDb();
-      const rows = await db.getAllAsync<any>(
-        `SELECT * FROM local_transactions WHERE organization_id = ? ORDER BY occurred_at DESC, created_at DESC LIMIT ?;`,
-        [organizationId ?? null, limit ?? 50]
-      );
+      let query = `SELECT * FROM local_transactions WHERE organization_id = ?`;
+      const params: any[] = [organizationId ?? null];
+
+      if (startDate) {
+        query += ` AND occurred_at >= ?`;
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ` AND occurred_at <= ?`;
+        params.push(endDate);
+      }
+
+      query += ` ORDER BY occurred_at DESC, created_at DESC LIMIT ? OFFSET ?;`;
+      params.push(limit ?? 50);
+      params.push(offset ?? 0);
+
+      const rows = await db.getAllAsync<any>(query, params);
       return rows.map((r) => ({
         id: r.id,
         organization_id: r.organization_id,
