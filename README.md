@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Platform-Android_First-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android First" />
   <img src="https://img.shields.io/badge/Framework-React_Native_%2B_Expo-000020?style=for-the-badge&logo=expo&logoColor=white" alt="Expo" />
   <img src="https://img.shields.io/badge/Database-SQLite_%2B_Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase" />
-  <img src="https://img.shields.io/badge/Status-v0.1.0_MVP-00F2FE?style=for-the-badge" alt="Version 0.1.0" />
+  <img src="https://img.shields.io/badge/Status-v0.3.0_Live-00F2FE?style=for-the-badge" alt="Version 0.3.0" />
 </p>
 
 ---

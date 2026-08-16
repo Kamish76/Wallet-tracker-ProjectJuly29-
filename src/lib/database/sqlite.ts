@@ -1,5 +1,13 @@
 import * as SQLite from 'expo-sqlite';
-import type { WalletAccount, WalletTransaction, OfflineSyncQueueItem, SyncQueueAction } from '@/types/wallet';
+import {
+  DEFAULT_INCOME_CATEGORIES,
+  DEFAULT_EXPENSE_CATEGORIES,
+  type WalletAccount,
+  type WalletTransaction,
+  type OfflineSyncQueueItem,
+  type SyncQueueAction,
+  type WalletCategory,
+} from '@/types/wallet';
 
 const DB_NAME = 'orgwallet_offline.db';
 
@@ -71,6 +79,22 @@ export class OfflineDatabase {
         created_at TEXT,
         updated_at TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS wallet_categories (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL,
+        normalized_name TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        aliases TEXT DEFAULT '[]',
+        is_custom INTEGER DEFAULT 0,
+        created_at TEXT,
+        updated_at TEXT,
+        sync_status TEXT DEFAULT 'synced',
+        local_id TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_wallet_categories_org ON wallet_categories(organization_id);
+      CREATE INDEX IF NOT EXISTS idx_wallet_categories_name ON wallet_categories(organization_id, normalized_name);
     `);
   }
 
@@ -81,6 +105,7 @@ export class OfflineDatabase {
         const db = await this.getDb();
         await db.runAsync('DELETE FROM local_transactions;');
         await db.runAsync('DELETE FROM local_accounts;');
+        await db.runAsync('DELETE FROM wallet_categories;');
         await db.runAsync('DELETE FROM offline_sync_queue;');
       } catch (err) {
         console.error('[OfflineDatabase] Error clearing local data:', err);
@@ -134,6 +159,16 @@ export class OfflineDatabase {
     });
   }
 
+  public static async deleteAccount(id: string, organizationId: string): Promise<void> {
+    return this.withLock(async () => {
+      const db = await this.getDb();
+      await db.runAsync(
+        `DELETE FROM local_accounts WHERE id = ? AND organization_id = ?;`,
+        [id ?? null, organizationId ?? null]
+      );
+    });
+  }
+
   // --- Transactions CRUD ---
   public static async upsertTransaction(tx: WalletTransaction, syncStatus: 'synced' | 'pending' = 'synced'): Promise<void> {
     return this.withLock(async () => {
@@ -150,7 +185,9 @@ export class OfflineDatabase {
            account_id = excluded.account_id,
            transfer_to_account_id = excluded.transfer_to_account_id,
            category = excluded.category,
+           category_id = excluded.category_id,
            description = excluded.description,
+           occurred_at = excluded.occurred_at,
            sync_status = excluded.sync_status;`,
         [
           tx.id ?? null,
@@ -193,6 +230,147 @@ export class OfflineDatabase {
         occurred_at: r.occurred_at,
         sync_status: r.sync_status,
       }));
+    });
+  }
+
+  public static async deleteTransaction(id: string, organizationId: string): Promise<void> {
+    return this.withLock(async () => {
+      const db = await this.getDb();
+      await db.runAsync(
+        `DELETE FROM local_transactions WHERE id = ? AND organization_id = ?;`,
+        [id ?? null, organizationId ?? null]
+      );
+    });
+  }
+
+  public static async updateTransactionSyncStatus(id: string, syncStatus: 'synced' | 'pending'): Promise<void> {
+    return this.withLock(async () => {
+      const db = await this.getDb();
+      await db.runAsync(
+        `UPDATE local_transactions SET sync_status = ? WHERE id = ?;`,
+        [syncStatus ?? 'synced', id ?? null]
+      );
+    });
+  }
+
+  // --- Categories CRUD ---
+  public static async getCategories(orgId: string, type?: 'income' | 'expense'): Promise<WalletCategory[]> {
+    return this.withLock(async () => {
+      const db = await this.getDb();
+      const rows = await db.getAllAsync<any>(
+        `SELECT * FROM wallet_categories WHERE organization_id = ? ORDER BY created_at ASC;`,
+        [orgId ?? null]
+      );
+      const categories: WalletCategory[] = (rows || []).map((r) => ({
+        id: r.id,
+        organization_id: r.organization_id,
+        normalized_name: r.normalized_name,
+        display_name: r.display_name,
+        aliases: (() => {
+          try {
+            return JSON.parse(r.aliases || '[]');
+          } catch {
+            return [];
+          }
+        })(),
+        is_custom: Boolean(r.is_custom),
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        sync_status: r.sync_status,
+        local_id: r.local_id,
+      }));
+      if (type) {
+        const tag = type === 'income' ? 'type:income' : 'type:expense';
+        return categories.filter((c) => c.aliases.includes(tag));
+      }
+      return categories;
+    });
+  }
+
+  public static async upsertCategory(category: WalletCategory, syncStatus: 'synced' | 'pending' = 'synced'): Promise<void> {
+    return this.withLock(async () => {
+      const db = await this.getDb();
+      const aliasesJson = JSON.stringify(category.aliases || []);
+      await db.runAsync(
+        `INSERT INTO wallet_categories (id, organization_id, normalized_name, display_name, aliases, is_custom, created_at, updated_at, sync_status, local_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           normalized_name = excluded.normalized_name,
+           display_name = excluded.display_name,
+           aliases = excluded.aliases,
+           is_custom = excluded.is_custom,
+           updated_at = excluded.updated_at,
+           sync_status = excluded.sync_status;`,
+        [
+          category.id ?? null,
+          category.organization_id ?? null,
+          category.normalized_name ?? null,
+          category.display_name ?? null,
+          aliasesJson ?? '[]',
+          category.is_custom ? 1 : 0,
+          category.created_at ?? null,
+          category.updated_at ?? null,
+          syncStatus ?? 'synced',
+          category.local_id ?? null,
+        ]
+      );
+    });
+  }
+
+  public static async deleteCategory(categoryId: string, orgId: string): Promise<void> {
+    return this.withLock(async () => {
+      const db = await this.getDb();
+      await db.runAsync(
+        'DELETE FROM wallet_categories WHERE id = ? AND organization_id = ?;',
+        [categoryId ?? null, orgId ?? null]
+      );
+    });
+  }
+
+  public static async seedDefaultCategories(orgId: string): Promise<void> {
+    return this.withLock(async () => {
+      const db = await this.getDb();
+      const existing = await db.getAllAsync<{ id: string }>(
+        'SELECT id FROM wallet_categories WHERE organization_id = ? LIMIT 1;',
+        [orgId ?? null]
+      );
+      if (existing && existing.length > 0) return;
+
+      const now = new Date().toISOString();
+      for (const name of DEFAULT_INCOME_CATEGORIES) {
+        const id = `cat_inc_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${orgId.slice(0, 8)}`;
+        const aliases = ['type:income'];
+        await db.runAsync(
+          `INSERT OR IGNORE INTO wallet_categories (id, organization_id, normalized_name, display_name, aliases, is_custom, created_at, updated_at, sync_status)
+           VALUES (?, ?, ?, ?, ?, 0, ?, ?, 'pending');`,
+          [
+            id ?? null,
+            orgId ?? null,
+            name.toLowerCase() ?? null,
+            name ?? null,
+            JSON.stringify(aliases) ?? '[]',
+            now,
+            now,
+          ]
+        );
+      }
+      for (const name of DEFAULT_EXPENSE_CATEGORIES) {
+        const id = `cat_exp_${name.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${orgId.slice(0, 8)}`;
+        const aliases = ['type:expense'];
+        await db.runAsync(
+          `INSERT OR IGNORE INTO wallet_categories (id, organization_id, normalized_name, display_name, aliases, is_custom, created_at, updated_at, sync_status)
+           VALUES (?, ?, ?, ?, ?, 0, ?, ?, 'pending');`,
+          [
+            id ?? null,
+            orgId ?? null,
+            name.toLowerCase() ?? null,
+            name ?? null,
+            JSON.stringify(aliases) ?? '[]',
+            now,
+            now,
+          ]
+        );
+      }
     });
   }
 

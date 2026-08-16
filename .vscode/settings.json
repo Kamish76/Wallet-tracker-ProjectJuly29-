@@ -1,0 +1,15 @@
+{
+  "gradle.javaHome": "W:/Dev/Android/Android Studio/jbr",
+  "java.import.gradle.java.home": "W:/Dev/Android/Android Studio/jbr",
+  "java.jdt.ls.java.home": "W:/Dev/Android/Android Studio/jbr",
+  "gradle.nestedProjects": true,
+  "gradle.autoDetect": "off",
+  "java.import.gradle.enabled": false,
+  "java.configuration.runtime": [
+    {
+      "name": "JavaSE-21",
+      "path": "W:/Dev/Android/Android Studio/jbr",
+      "default": true
+    }
+  ]
+}

@@ -96,6 +96,36 @@ export interface Database {
         };
         Relationships: [];
       };
+      transaction_categories: {
+        Row: {
+          id: string;
+          organization_id: string;
+          normalized_name: string;
+          aliases: string[] | null;
+          is_custom: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          normalized_name: string;
+          aliases?: string[] | null;
+          is_custom?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          organization_id?: string;
+          normalized_name?: string;
+          aliases?: string[] | null;
+          is_custom?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       transactions: {
         Row: {
           id: string;
