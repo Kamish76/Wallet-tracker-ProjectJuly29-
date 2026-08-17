@@ -23,6 +23,7 @@ import { WidgetService } from '@/lib/widget/widgetService';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import { getAccountBadgeText } from '@/lib/utils/balance';
+import { TransactionCard } from '@/components/TransactionCard';
 import { generateUUID } from '@/lib/utils/uuid';
 import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/wallet';
 
@@ -219,79 +220,12 @@ export default function TransactionsScreen() {
           ) : null
         }
         renderItem={({ item: tx }) => (
-          <TouchableOpacity
-            style={styles.txCard}
-            onPress={() => handleEditTransaction(tx)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.txLeft}>
-              <View
-                style={[
-                  styles.txTypeDot,
-                  {
-                    backgroundColor:
-                      tx.type === 'income'
-                        ? Colors.income
-                        : tx.type === 'transfer'
-                        ? Colors.transfer
-                        : Colors.expense,
-                  },
-                ]}
-              />
-              <View>
-                <Text style={styles.txCategory}>
-                  {tx.category || (tx.type === 'transfer' ? 'Transfer' : 'Uncategorized')}
-                </Text>
-                <Text style={styles.txDate}>
-                  <Text style={{ color: Colors.textLight, fontWeight: '600' }}>
-                    {getAccountBadgeText(tx, accounts)}
-                  </Text>
-                  {' • '}
-                  {new Date(tx.occurred_at).toLocaleDateString()}
-                  {tx.sync_status === 'pending' ? ' • (Offline Pending)' : ''}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.txRight}>
-              <Text
-                style={[
-                  styles.txAmount,
-                  {
-                    color:
-                      tx.type === 'income'
-                        ? Colors.income
-                        : tx.type === 'transfer'
-                        ? Colors.transfer
-                        : Colors.expense,
-                  },
-                ]}
-              >
-                {tx.type === 'income' ? '+' : '-'}${Number(tx.amount).toFixed(2)}
-              </Text>
-              <View style={styles.txActions}>
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    handleEditTransaction(tx);
-                  }}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Edit2 size={15} color={Colors.textMuted} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionBtn, { marginLeft: 14 }]}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    handleDeleteConfirm(tx);
-                  }}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Trash2 size={15} color={Colors.error} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </TouchableOpacity>
+          <TransactionCard
+            tx={tx}
+            accounts={accounts}
+            onEdit={handleEditTransaction}
+            onDelete={handleDeleteConfirm}
+          />
         )}
       />
       </View>

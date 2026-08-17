@@ -24,10 +24,9 @@ import { Tokens } from '@/theme/tokens';
 import * as Linking from 'expo-linking';
 import {
   calculateTotalNetBalance,
-  calculateTotalIncome,
-  calculateTotalExpense,
   getAccountBadgeText,
 } from '@/lib/utils/balance';
+import { TransactionCard } from '@/components/TransactionCard';
 import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/wallet';
 
 export default function DashboardScreen() {
@@ -44,6 +43,8 @@ export default function DashboardScreen() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [monthlyIncome, setMonthlyIncome] = useState(0);
+  const [monthlyExpense, setMonthlyExpense] = useState(0);
   const deepLinkUrl = Linking.useURL();
   const { type: paramTxType } = useLocalSearchParams<{ type?: string }>();
 
@@ -136,7 +137,16 @@ export default function DashboardScreen() {
         start.toISOString(),
         end.toISOString()
       );
+      
+      const totals = await OfflineDatabase.getMonthlyTotals(
+        organizationId,
+        start.toISOString(),
+        end.toISOString()
+      );
+
       setAccounts(localAccs);
+      setMonthlyIncome(totals.income);
+      setMonthlyExpense(totals.expense);
 
       if (currentOffset === 0) {
         setTransactions(localTxs);
@@ -217,10 +227,8 @@ export default function DashboardScreen() {
 
   const monthLabel = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  // Calculate totals from accounts & all transactions using OrgFinance web app logic
+  // Calculate totals from accounts using OrgFinance web app logic
   const totalBalance = calculateTotalNetBalance(accounts, transactions);
-  const totalIncome = calculateTotalIncome(transactions);
-  const totalExpense = calculateTotalExpense(transactions);
 
   const renderHeader = () => (
     <>
@@ -263,21 +271,21 @@ export default function DashboardScreen() {
       <View style={styles.statsRow}>
         <View style={[styles.statCard, { borderColor: Colors.income }]}>
           <View style={styles.statIconRow}>
-            <Text style={styles.statLabel}>INCOME (RECENT)</Text>
+            <Text style={styles.statLabel}>INCOME (MONTH)</Text>
             <ArrowUpRight size={18} color={Colors.income} />
           </View>
           <Text style={[styles.statValue, { color: Colors.income }]}>
-            +${totalIncome.toFixed(2)}
+            +${monthlyIncome.toFixed(2)}
           </Text>
         </View>
 
         <View style={[styles.statCard, { borderColor: Colors.expense }]}>
           <View style={styles.statIconRow}>
-            <Text style={styles.statLabel}>EXPENSE (RECENT)</Text>
+            <Text style={styles.statLabel}>EXPENSE (MONTH)</Text>
             <ArrowDownRight size={18} color={Colors.expense} />
           </View>
           <Text style={[styles.statValue, { color: Colors.expense }]}>
-            -${totalExpense.toFixed(2)}
+            -${monthlyExpense.toFixed(2)}
           </Text>
         </View>
       </View>
@@ -343,79 +351,12 @@ export default function DashboardScreen() {
           ) : null
         }
         renderItem={({ item: tx }) => (
-          <TouchableOpacity
-            style={styles.txCard}
-            onPress={() => handleEditTransaction(tx)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.txLeft}>
-              <View
-                style={[
-                  styles.txTypeDot,
-                  {
-                    backgroundColor:
-                      tx.type === 'income'
-                        ? Colors.income
-                        : tx.type === 'transfer'
-                        ? Colors.transfer
-                        : Colors.expense,
-                  },
-                ]}
-              />
-              <View>
-                <Text style={styles.txCategory}>
-                  {tx.category || (tx.type === 'transfer' ? 'Transfer' : 'Uncategorized')}
-                </Text>
-                <Text style={styles.txDate}>
-                  <Text style={{ color: Colors.textLight, fontWeight: '600' }}>
-                    {getAccountBadgeText(tx, accounts)}
-                  </Text>
-                  {' • '}
-                  {new Date(tx.occurred_at).toLocaleDateString()}
-                  {tx.sync_status === 'pending' ? ' • (Offline Pending)' : ''}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.txRight}>
-              <Text
-                style={[
-                  styles.txAmount,
-                  {
-                    color:
-                      tx.type === 'income'
-                        ? Colors.income
-                        : tx.type === 'transfer'
-                        ? Colors.transfer
-                        : Colors.expense,
-                  },
-                ]}
-              >
-                {tx.type === 'income' ? '+' : '-'}${Number(tx.amount).toFixed(2)}
-              </Text>
-              <View style={styles.txActions}>
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    handleEditTransaction(tx);
-                  }}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Edit2 size={15} color={Colors.textMuted} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionBtn, { marginLeft: 14 }]}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    handleDeleteConfirm(tx);
-                  }}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Trash2 size={15} color={Colors.error} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </TouchableOpacity>
+          <TransactionCard
+            tx={tx}
+            accounts={accounts}
+            onEdit={handleEditTransaction}
+            onDelete={handleDeleteConfirm}
+          />
         )}
       />
 
