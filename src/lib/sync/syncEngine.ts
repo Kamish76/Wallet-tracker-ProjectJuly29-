@@ -84,6 +84,12 @@ export class SyncEngine {
       return { success: false, error: 'No internet connection' };
     }
 
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData?.session) {
+      console.warn('[SyncEngine] Aborting sync: No active session. Prevents RLS silent wipes.');
+      return { success: false, error: 'No active session' };
+    }
+
     const rateStatus = await RateLimiter.checkLimit('sync:now', RateLimitPolicies.SYNC_NOW);
     if (!rateStatus.allowed) {
       return {
@@ -124,6 +130,11 @@ export class SyncEngine {
     if (!this.isOnline) {
       console.log('[SyncEngine] Skipping firstTimeAutoSync: offline');
       return { success: false, error: 'No internet connection' };
+    }
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData?.session) {
+      console.warn('[SyncEngine] Skipping firstTimeAutoSync: No active session.');
+      return { success: false, error: 'No active session' };
     }
     console.log('[SyncEngine] Performing first-time auto sync after user login for org:', organizationId);
     this.isSyncing = true;
@@ -387,17 +398,17 @@ export class SyncEngine {
       }
     }
 
-    // 2. Fetch transactions (increased limit to 1000 to ensure deleted records are caught)
+    // 2. Fetch all transactions (removed limit to ensure older records are not deleted locally)
     const { data: txs, error: txErr } = await supabase
       .from('transactions')
       .select('*')
       .eq('organization_id', organizationId)
-      .order('occurred_at', { ascending: false })
-      .limit(1000);
+      .order('occurred_at', { ascending: false });
 
     if (!txErr && txs) {
       const serverIds = new Set(txs.map((t) => t.id));
-      const localTxs = await OfflineDatabase.getTransactions(organizationId, 1000);
+      // Fetch all local transactions by setting a high limit
+      const localTxs = await OfflineDatabase.getTransactions(organizationId, 1000000);
       for (const localTx of localTxs) {
         // Remove ANY local transaction that does not exist on the server AND is not pending creation offline
         if (!serverIds.has(localTx.id) && !pendingCreateTxIds.has(localTx.id)) {

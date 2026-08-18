@@ -41,6 +41,8 @@ export class OfflineDatabase {
 
   private static async initSchema(db: SQLite.SQLiteDatabase): Promise<void> {
     await db.execAsync(`
+      PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = NORMAL;
       PRAGMA foreign_keys = ON;
 
       CREATE TABLE IF NOT EXISTS local_accounts (
@@ -95,6 +97,7 @@ export class OfflineDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_wallet_categories_org ON wallet_categories(organization_id);
       CREATE INDEX IF NOT EXISTS idx_wallet_categories_name ON wallet_categories(organization_id, normalized_name);
+      CREATE INDEX IF NOT EXISTS idx_transactions_org_date ON local_transactions(organization_id, occurred_at DESC);
     `);
   }
 
@@ -169,7 +172,32 @@ export class OfflineDatabase {
     });
   }
 
-  // --- Transactions CRUD ---
+  // --- TRANSACTIONS ---
+  public static async getMonthlyTotals(organizationId: string, startDate: string, endDate: string) {
+    return this.withLock(async () => {
+      const db = await this.getDb();
+      const rows = await db.getAllAsync<{ type: string; total: number }>(`
+        SELECT type, SUM(amount) as total 
+        FROM local_transactions 
+        WHERE organization_id = ? AND occurred_at >= ? AND occurred_at <= ? 
+        GROUP BY type
+      `, [organizationId, startDate, endDate]);
+
+      let income = 0;
+      let expense = 0;
+
+      for (const row of rows) {
+        if (row.type === 'income') {
+          income += row.total;
+        } else if (row.type.startsWith('expense')) {
+          expense += row.total;
+        }
+      }
+
+      return { income, expense };
+    });
+  }
+
   public static async upsertTransaction(tx: WalletTransaction, syncStatus: 'synced' | 'pending' = 'synced'): Promise<void> {
     return this.withLock(async () => {
       const db = await this.getDb();
@@ -208,13 +236,32 @@ export class OfflineDatabase {
     });
   }
 
-  public static async getTransactions(organizationId: string, limit = 50): Promise<WalletTransaction[]> {
+  public static async getTransactions(
+    organizationId: string,
+    limit = 50,
+    offset = 0,
+    startDate?: string,
+    endDate?: string
+  ): Promise<WalletTransaction[]> {
     return this.withLock(async () => {
       const db = await this.getDb();
-      const rows = await db.getAllAsync<any>(
-        `SELECT * FROM local_transactions WHERE organization_id = ? ORDER BY occurred_at DESC, created_at DESC LIMIT ?;`,
-        [organizationId ?? null, limit ?? 50]
-      );
+      let query = `SELECT * FROM local_transactions WHERE organization_id = ?`;
+      const params: any[] = [organizationId ?? null];
+
+      if (startDate) {
+        query += ` AND occurred_at >= ?`;
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += ` AND occurred_at <= ?`;
+        params.push(endDate);
+      }
+
+      query += ` ORDER BY occurred_at DESC, created_at DESC LIMIT ? OFFSET ?;`;
+      params.push(limit ?? 50);
+      params.push(offset ?? 0);
+
+      const rows = await db.getAllAsync<any>(query, params);
       return rows.map((r) => ({
         id: r.id,
         organization_id: r.organization_id,

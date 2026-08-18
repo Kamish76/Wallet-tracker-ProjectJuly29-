@@ -64,10 +64,9 @@ export class WidgetService {
     try {
       let orgId = organizationId;
       if (!orgId) {
-        const session = await WalletAuthService.getSession();
-        if (session?.user?.id) {
-          const res = await WalletAuthService.resolveUserWallet(session.user.id);
-          orgId = res.organizationId;
+        const cached = await WalletAuthService.getCachedOrgIdAsync();
+        if (cached) {
+          orgId = cached;
         }
       }
 

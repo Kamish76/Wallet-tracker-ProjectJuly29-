@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Platform-Android_First-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android First" />
   <img src="https://img.shields.io/badge/Framework-React_Native_%2B_Expo-000020?style=for-the-badge&logo=expo&logoColor=white" alt="Expo" />
   <img src="https://img.shields.io/badge/Database-SQLite_%2B_Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase" />
-  <img src="https://img.shields.io/badge/Status-v0.3.0_Live-00F2FE?style=for-the-badge" alt="Version 0.3.0" />
+  <img src="https://img.shields.io/badge/Status-v0.4.0_Live-00F2FE?style=for-the-badge" alt="Version 0.4.0" />
 </p>
 
 ---
@@ -93,12 +93,19 @@ w:\projects\OrgWallet\
 - **Android Studio / Android SDK**: For local Android emulator testing
 - **Expo CLI**: Optional global install (`npm install -g expo-cli`)
 
-### 2. Environment Setup
+### 2. Environment Setup & Device Migration
 Create a `.env` or `.env.local` file in the root directory with your Supabase credentials:
 ```env
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
 ```
+
+> [!IMPORTANT]
+> **Working Across Multiple Laptops?**
+> Because of strict security rules, certain credential files are completely hidden from Git and will NOT download when you clone the repository on a new machine. **Every time you set up a new laptop**, you must manually transfer the following 3 untracked files from your old machine to ensure your local Android builds match Google Play Console:
+> 1. `android/app/release.keystore` — Your production Android signing key.
+> 2. `android/local.properties` — Contains your keystore passwords and local Android SDK path (`sdk.dir`).
+> 3. `.env.local` — Contains your private Supabase connection strings and Google OAuth Client IDs.
 
 ### 3. Install Dependencies
 ```bash

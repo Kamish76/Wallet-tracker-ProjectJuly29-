@@ -1,5 +1,6 @@
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, supabaseAdmin } from '@/lib/supabase/client';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { OfflineDatabase } from '@/lib/database/sqlite';
@@ -35,10 +36,37 @@ export function extractTokensFromUrl(url: string): { accessToken?: string; refre
 export class WalletAuthService {
   private static cachedOrgId: string | null = null;
   private static hasPulledInitialData = false;
+  private static readonly PRIMARY_ORG_KEY = '@orgwallet_primary_org_id';
 
-  public static clearCache() {
+  public static async getCachedOrgIdAsync(): Promise<string | null> {
+    if (this.cachedOrgId) return this.cachedOrgId;
+    try {
+      const stored = await AsyncStorage.getItem(this.PRIMARY_ORG_KEY);
+      if (stored) {
+        this.cachedOrgId = stored;
+        return stored;
+      }
+    } catch (e) {
+      console.error('[WalletAuthService] Failed to read cached org ID:', e);
+    }
+    return null;
+  }
+
+  private static async setCachedOrgId(orgId: string) {
+    this.cachedOrgId = orgId;
+    try {
+      await AsyncStorage.setItem(this.PRIMARY_ORG_KEY, orgId);
+    } catch (e) {
+      console.error('[WalletAuthService] Failed to write cached org ID:', e);
+    }
+  }
+
+  public static async clearCache() {
     this.cachedOrgId = null;
     this.hasPulledInitialData = false;
+    try {
+      await AsyncStorage.removeItem(this.PRIMARY_ORG_KEY);
+    } catch (e) {}
   }
 
   public static async clearAllUserData() {
@@ -147,12 +175,13 @@ export class WalletAuthService {
 
   // --- Rule #2: Personal Wallet Resolution & Auto-Spawning ---
   public static async resolveUserWallet(userId: string): Promise<{ organizationId: string; createdNew: boolean }> {
-    if (this.cachedOrgId) {
+    const cachedId = await this.getCachedOrgIdAsync();
+    if (cachedId) {
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
-        await SyncEngine.firstTimeAutoSync(this.cachedOrgId);
+        await SyncEngine.firstTimeAutoSync(cachedId);
       }
-      return { organizationId: this.cachedOrgId, createdNew: false };
+      return { organizationId: cachedId, createdNew: false };
     }
 
     // Step 1: Query organizations owned by this specific userId OR where userId is an active member
@@ -188,7 +217,7 @@ export class WalletAuthService {
       for (const org of userOrgs) {
         if (isWalletOrganization(org.description, (org as any).is_wallet)) {
           console.log('[WalletAuthService] Using Personal Wallet org:', org.id);
-          this.cachedOrgId = org.id;
+          await this.setCachedOrgId(org.id);
           if (!this.hasPulledInitialData) {
             this.hasPulledInitialData = true;
             await SyncEngine.firstTimeAutoSync(org.id);
@@ -200,7 +229,7 @@ export class WalletAuthService {
       // Second check (FALLBACK): If no [wallet] marker org is found, use the user's first accessible organization
       const firstOrg = userOrgs[0];
       console.log('[WalletAuthService] Using existing org as Personal Wallet fallback:', firstOrg.id);
-      this.cachedOrgId = firstOrg.id;
+      await this.setCachedOrgId(firstOrg.id);
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
         await SyncEngine.firstTimeAutoSync(firstOrg.id);
@@ -256,7 +285,7 @@ export class WalletAuthService {
       }, 'synced');
     }
 
-    this.cachedOrgId = newOrg.id;
+    await this.setCachedOrgId(newOrg.id);
     this.hasPulledInitialData = true;
     await SyncEngine.firstTimeAutoSync(newOrg.id);
     return { organizationId: newOrg.id, createdNew: true };

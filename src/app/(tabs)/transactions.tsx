@@ -9,6 +9,8 @@ import {
   Alert,
   StyleSheet,
   RefreshControl,
+  FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { Plus, X, Filter, RefreshCw, Edit2, Trash2 } from 'lucide-react-native';
 import { useFocusEffect } from 'expo-router';
@@ -21,6 +23,7 @@ import { WidgetService } from '@/lib/widget/widgetService';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import { getAccountBadgeText } from '@/lib/utils/balance';
+import { TransactionCard } from '@/components/TransactionCard';
 import { generateUUID } from '@/lib/utils/uuid';
 import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/wallet';
 
@@ -34,6 +37,9 @@ export default function TransactionsScreen() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
 
   const handleEditTransaction = (tx: WalletTransaction) => {
     setSelectedTx(tx);
@@ -61,7 +67,7 @@ export default function TransactionsScreen() {
                 SyncEngine.syncNow(orgId).catch(() => {});
               }
               WidgetService.refreshWidgetData(orgId || undefined).catch(() => {});
-              await loadLocalData(orgId);
+              await loadLocalData(orgId, 0);
             } catch (e: any) {
               Alert.alert('Error', e?.message || 'Failed to delete transaction.');
             }
@@ -71,12 +77,35 @@ export default function TransactionsScreen() {
     );
   };
 
-  const loadLocalData = useCallback(async (organizationId: string) => {
-    const txs = await OfflineDatabase.getTransactions(organizationId, 100);
-    const accs = await OfflineDatabase.getAccounts(organizationId);
-    setTransactions(txs);
-    setAccounts(accs);
+  const loadLocalData = useCallback(async (organizationId: string, currentOffset = 0) => {
+    try {
+      const txs = await OfflineDatabase.getTransactions(organizationId, 20, currentOffset);
+      const accs = await OfflineDatabase.getAccounts(organizationId);
+      
+      if (currentOffset === 0) {
+        setTransactions(txs);
+      } else {
+        setTransactions((prev) => {
+          const existingIds = new Set(prev.map(t => t.id));
+          const newTxs = txs.filter(t => !existingIds.has(t.id));
+          return [...prev, ...newTxs];
+        });
+      }
+      
+      setOffset(currentOffset + 20);
+      setHasMore(txs.length === 20);
+      setAccounts(accs);
+    } catch (e) {
+      console.log(e);
+    }
   }, []);
+
+  const handleLoadMore = async () => {
+    if (!hasMore || isFetchingMore || !orgId) return;
+    setIsFetchingMore(true);
+    await loadLocalData(orgId, offset);
+    setIsFetchingMore(false);
+  };
 
   useEffect(() => {
     async function init() {
@@ -113,7 +142,7 @@ export default function TransactionsScreen() {
     if (!orgId) return;
     setRefreshing(true);
     await SyncEngine.syncNow(orgId);
-    await loadLocalData(orgId);
+    await loadLocalData(orgId, 0);
     setRefreshing(false);
   };
 
@@ -164,8 +193,11 @@ export default function TransactionsScreen() {
       </View>
 
       {/* Transactions List */}
-      <ScrollView
+      <FlatList
+        data={filteredTransactions}
+        keyExtractor={(item) => item.id}
         style={styles.listContainer}
+        contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -173,90 +205,29 @@ export default function TransactionsScreen() {
             tintColor={Colors.primary}
           />
         }
-      >
-        {filteredTransactions.length === 0 ? (
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        ListEmptyComponent={
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No transactions found</Text>
           </View>
-        ) : (
-          filteredTransactions.map((tx) => (
-            <TouchableOpacity
-              key={tx.id}
-              style={styles.txCard}
-              onPress={() => handleEditTransaction(tx)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.txLeft}>
-                <View
-                  style={[
-                    styles.txTypeDot,
-                    {
-                      backgroundColor:
-                        tx.type === 'income'
-                          ? Colors.income
-                          : tx.type === 'transfer'
-                          ? Colors.transfer
-                          : Colors.expense,
-                    },
-                  ]}
-                />
-                <View>
-                  <Text style={styles.txCategory}>
-                    {tx.category || (tx.type === 'transfer' ? 'Transfer' : 'Uncategorized')}
-                  </Text>
-                  <Text style={styles.txDate}>
-                    <Text style={{ color: Colors.textLight, fontWeight: '600' }}>
-                      {getAccountBadgeText(tx, accounts)}
-                    </Text>
-                    {' • '}
-                    {new Date(tx.occurred_at).toLocaleDateString()}
-                    {tx.sync_status === 'pending' ? ' • (Offline Pending)' : ''}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.txRight}>
-                <Text
-                  style={[
-                    styles.txAmount,
-                    {
-                      color:
-                        tx.type === 'income'
-                          ? Colors.income
-                          : tx.type === 'transfer'
-                          ? Colors.transfer
-                          : Colors.expense,
-                    },
-                  ]}
-                >
-                  {tx.type === 'income' ? '+' : '-'}${Number(tx.amount).toFixed(2)}
-                </Text>
-                <View style={styles.txActions}>
-                  <TouchableOpacity
-                    style={styles.actionBtn}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleEditTransaction(tx);
-                    }}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Edit2 size={15} color={Colors.textMuted} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { marginLeft: 14 }]}
-                    onPress={(e) => {
-                      e.stopPropagation();
-                      handleDeleteConfirm(tx);
-                    }}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Trash2 size={15} color={Colors.error} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))
+        }
+        ListFooterComponent={
+          isFetchingMore ? (
+            <View style={{ paddingVertical: 20 }}>
+              <ActivityIndicator size="small" color={Colors.primary} />
+            </View>
+          ) : null
+        }
+        renderItem={({ item: tx }) => (
+          <TransactionCard
+            tx={tx}
+            accounts={accounts}
+            onEdit={handleEditTransaction}
+            onDelete={handleDeleteConfirm}
+          />
         )}
-      </ScrollView>
+      />
       </View>
 
       {/* Floating Add Transaction Button (FAB) at bottom-right */}
@@ -274,7 +245,7 @@ export default function TransactionsScreen() {
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         onSuccess={() => {
-          if (orgId) loadLocalData(orgId);
+          if (orgId) loadLocalData(orgId, 0); // Reset to top
         }}
         orgId={orgId}
         userId={userId}
@@ -289,7 +260,7 @@ export default function TransactionsScreen() {
           setSelectedTx(null);
         }}
         onSuccess={() => {
-          if (orgId) loadLocalData(orgId);
+          if (orgId) loadLocalData(orgId, 0);
         }}
         orgId={orgId}
         userId={userId}

@@ -2,8 +2,10 @@
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
+  <uses-permission android:name="android.permission.WAKE_LOCK"/>
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
   <queries>
     <intent>
@@ -29,7 +31,7 @@
         <data android:scheme="orgwallet"/>
       </intent-filter>
     </activity>
-    <receiver android:name=".widget.OrgWalletBalance" android:exported="true" android:label="OrgWallet Balance &amp; Quick Actions">
+    <receiver android:name=".widget.OrgWalletBalance" android:exported="false" android:label="OrgWallet Balance &amp; Quick Actions">
       <intent-filter>
         <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
         <action android:name="com.kamish.orgfinance.WIDGET_CLICK"/>

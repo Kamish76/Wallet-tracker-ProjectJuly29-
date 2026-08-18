@@ -8,6 +8,7 @@ import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WidgetService } from '@/lib/widget/widgetService';
 import { widgetTaskHandler } from '@/widgets/widgetTaskHandler';
+import { registerBackgroundSync } from '@/lib/sync/backgroundTask';
 import { Colors } from '@/theme/colors';
 
 if (Platform.OS === 'android') {
@@ -32,6 +33,9 @@ export default function RootLayout() {
     if (Platform.OS === 'android') {
       WidgetService.refreshWidgetData().catch(() => {});
     }
+
+    // Register background sync task
+    registerBackgroundSync().catch(() => {});
   }, []);
 
   return (

@@ -1,6 +1,6 @@
 {
   "name": "orgwallet",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
@@ -14,6 +14,7 @@
     "@react-native-community/slider": "^5.2.0",
     "@supabase/supabase-js": "^2.45.0",
     "expo": "~54.0.0",
+    "expo-background-fetch": "^57.0.11",
     "expo-constants": "~18.0.13",
     "expo-linking": "~8.0.12",
     "expo-router": "~6.0.24",
@@ -21,6 +22,7 @@
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "expo-system-ui": "~6.0.9",
+    "expo-task-manager": "^57.0.11",
     "expo-web-browser": "~15.0.11",
     "lucide-react-native": "^0.400.0",
     "react": "19.1.0",
