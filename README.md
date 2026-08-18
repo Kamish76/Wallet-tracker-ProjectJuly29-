@@ -93,12 +93,19 @@ w:\projects\OrgWallet\
 - **Android Studio / Android SDK**: For local Android emulator testing
 - **Expo CLI**: Optional global install (`npm install -g expo-cli`)
 
-### 2. Environment Setup
+### 2. Environment Setup & Device Migration
 Create a `.env` or `.env.local` file in the root directory with your Supabase credentials:
 ```env
 EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
 ```
+
+> [!IMPORTANT]
+> **Working Across Multiple Laptops?**
+> Because of strict security rules, certain credential files are completely hidden from Git and will NOT download when you clone the repository on a new machine. **Every time you set up a new laptop**, you must manually transfer the following 3 untracked files from your old machine to ensure your local Android builds match Google Play Console:
+> 1. `android/app/release.keystore` — Your production Android signing key.
+> 2. `android/local.properties` — Contains your keystore passwords and local Android SDK path (`sdk.dir`).
+> 3. `.env.local` — Contains your private Supabase connection strings and Google OAuth Client IDs.
 
 ### 3. Install Dependencies
 ```bash
