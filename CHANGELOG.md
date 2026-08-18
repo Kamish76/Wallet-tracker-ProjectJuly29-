@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.4.0] - Next Release (2026-08-18)
+
+### 🌟 New Features & Capabilities
+
+- **Hardware Keyboard & Calculator Support**: Added integrated calculator and hardware keyboard support directly to the transaction modal for faster data entry.
+- **Enhanced UI Integration**: Further optimized dashboard and transactions UI integrating directly with SQLite local data and the sync logic.
+
+### 🔧 Technical Improvements & Fixes
+
+- **Sync & Background Stability Fix**: Resolved a critical bug causing background widget crashes and a silent SQLite database wipe.
+- **Transaction Workflow Refinements**: Refined the transaction management module to ensure stable transaction lifecycle workflows across UI and the local database.
+- **Documentation Updates**: Generalized Android build requirements in project rules to remove machine-specific paths, and added device migration security file transfer notes.
+
+---
+
 ## [0.3.0] - Offline Transaction & Sub-Account Management Release (2026-08-03)
 
 ### 🌟 New Features & Capabilities
