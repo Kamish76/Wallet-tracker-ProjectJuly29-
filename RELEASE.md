@@ -31,8 +31,9 @@ This document serves as the official **Release Notes** for **OrgWallet v0.4.1** 
 
 ### 🔥 Key Highlights in v0.4.1
 
-#### 0. 🛠️ ProGuard Hotfix
+#### 0. 🛠️ ProGuard & Sync Hotfixes
 - **Expo Modules Crash Fix**: Added explicit ProGuard keep rules for `expo.modules.**` to prevent `AnyTypeCache` from being minified in release builds, resolving immediate crashes on Android launch.
+- **SyncEngine Session Fix**: Fixed an issue causing "No active session" sync aborts in release builds where the `supabaseAdmin` client mistakenly hijacked the session check.
 
 ### 🔥 Key Highlights in v0.4.0
 
