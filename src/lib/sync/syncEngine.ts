@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { OfflineDatabase } from '@/lib/database/sqlite';
-import { supabaseAdmin as supabase } from '@/lib/supabase/client';
+import { supabase, supabaseAdmin } from '@/lib/supabase/client';
 import { generateUUID, isValidUUID } from '@/lib/utils/uuid';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { WidgetService } from '@/lib/widget/widgetService';
@@ -183,7 +183,7 @@ export class SyncEngine {
               ? payload.transfer_to_account_id
               : null;
 
-          const { error } = await supabase.from('transactions').insert({
+          const { error } = await supabaseAdmin.from('transactions').insert({
             id: txId,
             organization_id: payload.organization_id,
             user_id: payload.user_id,
@@ -216,7 +216,7 @@ export class SyncEngine {
               ? payload.transfer_to_account_id
               : null;
 
-          const { error } = await supabase
+          const { error } = await supabaseAdmin
             .from('transactions')
             .update({
               type: payload.type,
@@ -237,7 +237,7 @@ export class SyncEngine {
             throw error;
           }
         } else if (item.action === 'DELETE_TRANSACTION') {
-          const { error } = await supabase
+          const { error } = await supabaseAdmin
             .from('transactions')
             .delete()
             .eq('id', payload.id)
@@ -251,7 +251,7 @@ export class SyncEngine {
           }
         } else if (item.action === 'CREATE_ACCOUNT') {
           const accId = isValidUUID(payload.id) ? payload.id : generateUUID();
-          const { error } = await supabase.from('wallet_accounts').insert({
+          const { error } = await supabaseAdmin.from('wallet_accounts').insert({
             id: accId,
             organization_id: payload.organization_id,
             name: payload.name,
@@ -262,7 +262,7 @@ export class SyncEngine {
           else throw error;
         } else if (item.action === 'ARCHIVE_ACCOUNT') {
           // Safeguard: archive instead of hard delete!
-          const { error } = await supabase
+          const { error } = await supabaseAdmin
             .from('wallet_accounts')
             .update({ is_active: false })
             .eq('id', payload.id)
@@ -270,7 +270,7 @@ export class SyncEngine {
           if (!error) success = true;
           else throw error;
         } else if (item.action === 'UPDATE_ACCOUNT') {
-          const { error } = await supabase
+          const { error } = await supabaseAdmin
             .from('wallet_accounts')
             .update({
               name: payload.name,
@@ -283,7 +283,7 @@ export class SyncEngine {
           if (!error) success = true;
           else throw error;
         } else if (item.action === 'DELETE_ACCOUNT') {
-          const { error } = await supabase
+          const { error } = await supabaseAdmin
             .from('wallet_accounts')
             .delete()
             .eq('id', payload.id)
@@ -300,7 +300,7 @@ export class SyncEngine {
           item.action === 'UPDATE_CATEGORY'
         ) {
           const catId = isValidUUID(payload.id) ? payload.id : generateUUID();
-          const { error } = await supabase
+          const { error } = await supabaseAdmin
             .from('transaction_categories')
             .upsert({
               id: catId,
@@ -314,7 +314,7 @@ export class SyncEngine {
           if (!error) success = true;
           else throw error;
         } else if (item.action === 'DELETE_CATEGORY') {
-          const { error } = await supabase
+          const { error } = await supabaseAdmin
             .from('transaction_categories')
             .delete()
             .eq('id', payload.id)
@@ -372,7 +372,7 @@ export class SyncEngine {
     }
 
     // 1. Fetch accounts
-    const { data: accounts, error: accErr } = await supabase
+    const { data: accounts, error: accErr } = await supabaseAdmin
       .from('wallet_accounts')
       .select('*')
       .eq('organization_id', organizationId);
@@ -399,7 +399,7 @@ export class SyncEngine {
     }
 
     // 2. Fetch all transactions (removed limit to ensure older records are not deleted locally)
-    const { data: txs, error: txErr } = await supabase
+    const { data: txs, error: txErr } = await supabaseAdmin
       .from('transactions')
       .select('*')
       .eq('organization_id', organizationId)
@@ -434,7 +434,7 @@ export class SyncEngine {
     }
 
     // 3. Fetch transaction categories
-    const { data: categories, error: catErr } = await supabase
+    const { data: categories, error: catErr } = await supabaseAdmin
       .from('transaction_categories')
       .select('*')
       .eq('organization_id', organizationId);
