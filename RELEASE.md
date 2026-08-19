@@ -1,13 +1,13 @@
-# OrgWallet - Release Notes & Google Play Console Guide (v0.4.0)
+# OrgWallet - Release Notes & Google Play Console Guide (v0.4.1)
 
-This document serves as the official **Release Notes** for **OrgWallet v0.4.0** (and a comprehensive summary of all changes since the initial release v0.1.0) as well as an end-to-end guide for releasing **OrgWallet v0.4.0** on the Google Play Store using Expo Application Services (EAS) and the Google Play Console.
+This document serves as the official **Release Notes** for **OrgWallet v0.4.1** (and a comprehensive summary of all changes since the initial release v0.1.0) as well as an end-to-end guide for releasing **OrgWallet v0.4.1** on the Google Play Store using Expo Application Services (EAS) and the Google Play Console.
 
 ---
 
 ## 📋 Table of Contents
 
-1. [Release Notes — OrgWallet v0.4.0](#1-release-notes--orgwallet-v040)
-2. [Summary of Changes Since Initial Release (v0.1.0 to v0.4.0)](#2-summary-of-changes-since-initial-release-v010-to-v040)
+1. [Release Notes — OrgWallet v0.4.1](#1-release-notes--orgwallet-v041)
+2. [Summary of Changes Since Initial Release (v0.1.0 to v0.4.1)](#2-summary-of-changes-since-initial-release-v010-to-v041)
 3. [Prerequisites & EAS Configuration](#3-prerequisites--eas-configuration)
 4. [Required Assets for Google Play Console](#4-required-assets-for-google-play-console)
 5. [Building the Android App Bundle (.aab)](#5-building-the-android-app-bundle-aab)
@@ -18,16 +18,21 @@ This document serves as the official **Release Notes** for **OrgWallet v0.4.0** 
 
 ---
 
-## 1. Release Notes — OrgWallet v0.4.0
+## 1. Release Notes — OrgWallet v0.4.1
 
-**Release Version:** `v0.4.0`  
-**Android Version Code:** `5`  
-**Release Date:** August 18, 2026  
+**Release Version:** `v0.4.1`  
+**Android Version Code:** `6`  
+**Release Date:** August 19, 2026  
 
 ### 🌟 Overview
-**OrgWallet v0.4.0** introduces the latest updates and improvements to the application.
+**OrgWallet v0.4.1** introduces a critical hotfix to the application.
 
 ---
+
+### 🔥 Key Highlights in v0.4.1
+
+#### 0. 🛠️ ProGuard Hotfix
+- **Expo Modules Crash Fix**: Added explicit ProGuard keep rules for `expo.modules.**` to prevent `AnyTypeCache` from being minified in release builds, resolving immediate crashes on Android launch.
 
 ### 🔥 Key Highlights in v0.4.0
 
@@ -45,13 +50,14 @@ This document serves as the official **Release Notes** for **OrgWallet v0.4.0** 
 
 ---
 
-## 2. Summary of Changes Since Initial Release (v0.1.0 to v0.4.0)
+## 2. Summary of Changes Since Initial Release (v0.1.0 to v0.4.1)
 
-Below is a complete summary of all architectural, functional, and visual changes made from the initial release (`v0.1.0`) through `v0.4.0`:
+Below is a complete summary of all architectural, functional, and visual changes made from the initial release (`v0.1.0`) through `v0.4.1`:
 
 | Release | Date | Key Capabilities & Changes |
 | :--- | :--- | :--- |
-| **`v0.4.0`** *(Current)* | **2026-08-18** | • Added hardware keyboard and integrated calculator support to transaction modal.<br>• Enhanced dashboard and transaction UI integration with SQLite.<br>• Fixed background widget crashes and silent SQLite wipes during sync.<br>• Generalized Android build rules and added device migration documentation. |
+| **`v0.4.1`** *(Current)* | **2026-08-19** | • **ProGuard Hotfix**: Added `-keep class expo.modules.** { *; }` to prevent crashes on Android launch in Release builds. |
+| **`v0.4.0`** | **2026-08-18** | • Added hardware keyboard and integrated calculator support to transaction modal.<br>• Enhanced dashboard and transaction UI integration with SQLite.<br>• Fixed background widget crashes and silent SQLite wipes during sync.<br>• Generalized Android build rules and added device migration documentation. |
 | **`v0.3.0`** | **2026-08-03** | • Added full offline-first transaction editing and deletion (`EditTransactionModal`, `updateTransaction`, `deleteTransaction`).<br>• Added full offline-first sub-account editing and deletion with dynamic balance recalculation.<br>• Enforced Rule #2 Account Deletion Safeguards (`getAccountTransactionsCount` check blocking hard deletion of referenced accounts).<br>• Integrated bidirectional Sync Engine queue handlers (`UPDATE_TRANSACTION`, `DELETE_TRANSACTION`, `UPDATE_ACCOUNT`, `DELETE_ACCOUNT`).<br>• Applied FIFO mutex serialization (`withLock`) to all new SQLite CRUD methods.<br>• Updated Settings screen About card to display `OrgWallet v0.3.0`. |
 | **`v0.2.0`** | **2026-07-31** | • Added Live Android Home Screen Widget (`OrgWalletBalance`) with real-time net balance.<br>• Added Quick Action shortcut buttons on widget (`+ Expense`, `+ Income`, `+ Transfer`) deep-linking to `/action/add-transaction`.<br>• Added comprehensive Settings screen (`/settings`) with Widget Opacity slider and live preview card.<br>• Added Offline Sync Management UI (sync interval selector, conflict resolution policy, queue badge count, manual 'Sync Now').<br>• Integrated production branding assets (`icon.png`, `adaptive-icon.png`, `logo.jpg`, and multi-density splash screen logos).<br>• Applied automated Java 25 -> OpenJDK 21 Gradle binding in `gradle.properties` and production release keystore signing. |
 | **`v0.1.0`** *(Initial Beta)* | **2026-07-30** | • Implemented Personal Wallet mode with automatic detection of `[wallet]` metadata markers and default **`Cash`** sub-account creation.<br>• Implemented Local-First SQLite persistence (`orgwallet.db`) for zero-latency offline transaction and account management.<br>• Built background offline sync engine (`SyncEngine`) with `offline_sync_queue` and automatic reconnection recovery.<br>• Implemented accurate multi-sub-account Net Balance calculation engine.<br>• Created Dashboard, Transactions, and Accounts tabs with universal Floating Action Button (FAB) and unified `AddTransactionModal`.<br>• Added sub-account badge attribution (`Cash • 7/30/2026`, `Cash → Savings`) on transaction items.<br>• Resolved Supabase RLS recursion safeguards and PostgreSQL UUID input syntax protection. |
