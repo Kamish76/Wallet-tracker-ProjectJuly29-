@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.4.1] - ProGuard Hotfix Release (2026-08-19)
+
+### 🔧 Technical Improvements & Fixes
+
+- **ProGuard / Expo Modules Crash Fix**: Added explicit ProGuard keep rules for `expo.modules.**` to prevent `AnyTypeCache` from being minified in release builds, which was causing immediate crashes on Android launch.
+- **SyncEngine Session Fix**: Fixed an issue causing "No active session" sync aborts in release builds where the `supabaseAdmin` client (if configured via service role key) mistakenly hijacked the session check intended for the primary `supabase` auth client.
+
+---
+
 ## [0.4.0] - Next Release (2026-08-18)
 
 ### 🌟 New Features & Capabilities
