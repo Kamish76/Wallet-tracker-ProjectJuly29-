@@ -5,6 +5,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.4.2] - Widget and UI Adjustments (2026-08-21)
+
+### 🌟 New Features & UI Enhancements
+- **Tab Bar Layout**: Enlarged the bottom navigation tab icons and raised the tab bar slightly for better accessibility and aesthetics.
+- **Dashboard Layout**: Added horizontal padding to the Dashboard screen to align UI elements more cohesively with the rest of the application.
+- **Background Sync Intervals**: Expanded background sync settings to include new 1-hour and 3-hour interval options.
+
+### 🔧 Technical Improvements & Fixes
+- **Headless Task Registration Fix**: Relocated the widget task and background sync task registrations to a global `index.js` entry point. This completely resolves a bug where the Android widget would get stuck on the fallback loading screen and background data syncs would fail when the app was terminated in the background by the system.
+
+---
+
 ## [0.4.1] - ProGuard Hotfix Release (2026-08-19)
 
 ### 🔧 Technical Improvements & Fixes

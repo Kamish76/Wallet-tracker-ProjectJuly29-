@@ -1,13 +1,13 @@
-# OrgWallet - Release Notes & Google Play Console Guide (v0.4.1)
+# OrgWallet - Release Notes & Google Play Console Guide (v0.4.2)
 
-This document serves as the official **Release Notes** for **OrgWallet v0.4.1** (and a comprehensive summary of all changes since the initial release v0.1.0) as well as an end-to-end guide for releasing **OrgWallet v0.4.1** on the Google Play Store using Expo Application Services (EAS) and the Google Play Console.
+This document serves as the official **Release Notes** for **OrgWallet v0.4.2** (and a comprehensive summary of all changes since the initial release v0.1.0) as well as an end-to-end guide for releasing **OrgWallet v0.4.2** on the Google Play Store using Expo Application Services (EAS) and the Google Play Console.
 
 ---
 
 ## 📋 Table of Contents
 
-1. [Release Notes — OrgWallet v0.4.1](#1-release-notes--orgwallet-v041)
-2. [Summary of Changes Since Initial Release (v0.1.0 to v0.4.1)](#2-summary-of-changes-since-initial-release-v010-to-v041)
+1. [Release Notes — OrgWallet v0.4.2](#1-release-notes--orgwallet-v042)
+2. [Summary of Changes Since Initial Release (v0.1.0 to v0.4.2)](#2-summary-of-changes-since-initial-release-v010-to-v042)
 3. [Prerequisites & EAS Configuration](#3-prerequisites--eas-configuration)
 4. [Required Assets for Google Play Console](#4-required-assets-for-google-play-console)
 5. [Building the Android App Bundle (.aab)](#5-building-the-android-app-bundle-aab)
@@ -18,14 +18,20 @@ This document serves as the official **Release Notes** for **OrgWallet v0.4.1** 
 
 ---
 
-## 1. Release Notes — OrgWallet v0.4.1
+## 1. Release Notes — OrgWallet v0.4.2
 
-**Release Version:** `v0.4.1`  
-**Android Version Code:** `6`  
-**Release Date:** August 19, 2026  
+**Release Version:** `v0.4.2`  
+**Android Version Code:** `7`  
+**Release Date:** August 21, 2026  
 
 ### 🌟 Overview
-**OrgWallet v0.4.1** introduces a critical hotfix to the application.
+**OrgWallet v0.4.2** introduces UI enhancements and widget stability improvements.
+
+### 🚀 What's New in v0.4.2
+- **Tab Bar Layout**: Enlarged the bottom navigation tab icons and raised the tab bar slightly for better accessibility and aesthetics.
+- **Dashboard Layout**: Added horizontal padding to the Dashboard screen to align UI elements more cohesively with the rest of the application.
+- **Background Sync Intervals**: Expanded background sync settings to include new 1-hour and 3-hour interval options.
+- **Headless Task Registration Fix**: Relocated the widget task and background sync task registrations to a global `index.js` entry point. This completely resolves a bug where the Android widget would get stuck on the fallback loading screen and background data syncs would fail when the app was terminated in the background by the system.
 
 ---
 
@@ -51,13 +57,14 @@ This document serves as the official **Release Notes** for **OrgWallet v0.4.1** 
 
 ---
 
-## 2. Summary of Changes Since Initial Release (v0.1.0 to v0.4.1)
+## 2. Summary of Changes Since Initial Release (v0.1.0 to v0.4.2)
 
-Below is a complete summary of all architectural, functional, and visual changes made from the initial release (`v0.1.0`) through `v0.4.1`:
+Below is a complete summary of all architectural, functional, and visual changes made from the initial release (`v0.1.0`) through `v0.4.2`:
 
 | Release | Date | Key Capabilities & Changes |
 | :--- | :--- | :--- |
-| **`v0.4.1`** *(Current)* | **2026-08-19** | • **ProGuard Hotfix**: Added `-keep class expo.modules.** { *; }` to prevent crashes on Android launch in Release builds. |
+| **`v0.4.2`** *(Current)* | **2026-08-21** | • **Widget Stability**: Fixed Android widget loading screen issue and background sync tasks by registering headless tasks globally in `index.js`.<br>• **UI Enhancements**: Added padding to Dashboard, raised Tab Bar, enlarged Tab Bar icons.<br>• **Sync Settings**: Added 1-hour and 3-hour periodic sync intervals. |
+| **`v0.4.1`** | **2026-08-19** | • **ProGuard Hotfix**: Added `-keep class expo.modules.** { *; }` to prevent crashes on Android launch in Release builds. |
 | **`v0.4.0`** | **2026-08-18** | • Added hardware keyboard and integrated calculator support to transaction modal.<br>• Enhanced dashboard and transaction UI integration with SQLite.<br>• Fixed background widget crashes and silent SQLite wipes during sync.<br>• Generalized Android build rules and added device migration documentation. |
 | **`v0.3.0`** | **2026-08-03** | • Added full offline-first transaction editing and deletion (`EditTransactionModal`, `updateTransaction`, `deleteTransaction`).<br>• Added full offline-first sub-account editing and deletion with dynamic balance recalculation.<br>• Enforced Rule #2 Account Deletion Safeguards (`getAccountTransactionsCount` check blocking hard deletion of referenced accounts).<br>• Integrated bidirectional Sync Engine queue handlers (`UPDATE_TRANSACTION`, `DELETE_TRANSACTION`, `UPDATE_ACCOUNT`, `DELETE_ACCOUNT`).<br>• Applied FIFO mutex serialization (`withLock`) to all new SQLite CRUD methods.<br>• Updated Settings screen About card to display `OrgWallet v0.3.0`. |
 | **`v0.2.0`** | **2026-07-31** | • Added Live Android Home Screen Widget (`OrgWalletBalance`) with real-time net balance.<br>• Added Quick Action shortcut buttons on widget (`+ Expense`, `+ Income`, `+ Transfer`) deep-linking to `/action/add-transaction`.<br>• Added comprehensive Settings screen (`/settings`) with Widget Opacity slider and live preview card.<br>• Added Offline Sync Management UI (sync interval selector, conflict resolution policy, queue badge count, manual 'Sync Now').<br>• Integrated production branding assets (`icon.png`, `adaptive-icon.png`, `logo.jpg`, and multi-density splash screen logos).<br>• Applied automated Java 25 -> OpenJDK 21 Gradle binding in `gradle.properties` and production release keystore signing. |
