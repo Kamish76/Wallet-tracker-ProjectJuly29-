@@ -1,7 +1,7 @@
 {
   "name": "orgwallet",
-  "version": "0.4.1",
-  "main": "expo-router/entry",
+  "version": "0.4.2",
+  "main": "index.js",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",

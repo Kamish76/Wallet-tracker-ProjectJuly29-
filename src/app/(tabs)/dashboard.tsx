@@ -32,6 +32,7 @@ import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/
 export default function DashboardScreen() {
   const [accounts, setAccounts] = useState<WalletAccount[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
+  const [totalNetBalance, setTotalNetBalance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -148,6 +149,11 @@ export default function DashboardScreen() {
       setMonthlyIncome(totals.income);
       setMonthlyExpense(totals.expense);
 
+      // Fetch all transactions to compute the true total net balance exactly like the Widget
+      const allTxsForBalance = await OfflineDatabase.getTransactions(organizationId, 10000, 0);
+      const computedBalance = calculateTotalNetBalance(localAccs, allTxsForBalance);
+      setTotalNetBalance(computedBalance);
+
       if (currentOffset === 0) {
         setTransactions(localTxs);
       } else {
@@ -227,8 +233,7 @@ export default function DashboardScreen() {
 
   const monthLabel = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  // Calculate totals from accounts using OrgFinance web app logic
-  const totalBalance = calculateTotalNetBalance(accounts, transactions);
+  // Total balance is now calculated accurately using all transactions in loadLocalData
 
   const renderHeader = () => (
     <>
@@ -258,7 +263,7 @@ export default function DashboardScreen() {
       <View style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>TOTAL NET BALANCE</Text>
         <Text style={styles.balanceValue}>
-          ${totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          ${totalNetBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
         </Text>
         <View style={styles.accountCountPill}>
           <Text style={styles.accountCountText}>
@@ -317,7 +322,7 @@ export default function DashboardScreen() {
         data={transactions}
         keyExtractor={(item) => item.id}
         style={styles.container}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: Tokens.spacing.md, paddingTop: Tokens.spacing.sm, paddingBottom: 100 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

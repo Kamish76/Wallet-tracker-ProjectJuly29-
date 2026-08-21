@@ -17,9 +17,11 @@ function isWalletOrganization(description: string | null | undefined, isWalletFl
   return description?.trim().toLowerCase().startsWith(WALLET_MARKER) ?? false;
 }
 
-export function extractTokensFromUrl(url: string): { accessToken?: string; refreshToken?: string } {
+export function extractTokensFromUrl(url: string): { accessToken?: string; refreshToken?: string; error?: string; errorDescription?: string } {
   let accessToken: string | undefined;
   let refreshToken: string | undefined;
+  let error: string | undefined;
+  let errorDescription: string | undefined;
   const parts = url.split(/[?#]/);
   for (const part of parts) {
     const searchParams = new URLSearchParams(part);
@@ -29,8 +31,14 @@ export function extractTokensFromUrl(url: string): { accessToken?: string; refre
     if (searchParams.get('refresh_token')) {
       refreshToken = searchParams.get('refresh_token') || undefined;
     }
+    if (searchParams.get('error')) {
+      error = searchParams.get('error') || undefined;
+    }
+    if (searchParams.get('error_description')) {
+      errorDescription = searchParams.get('error_description') || undefined;
+    }
   }
-  return { accessToken, refreshToken };
+  return { accessToken, refreshToken, error, errorDescription };
 }
 
 export class WalletAuthService {
@@ -103,7 +111,8 @@ export class WalletAuthService {
   public static async loginWithGoogle() {
     await RateLimiter.assertAllowed('auth:oauth', RateLimitPolicies.AUTH_OAUTH);
     await this.clearAllUserData();
-    const redirectTo = Linking.createURL('auth/callback');
+    await supabase.auth.signOut(); // Clear any stale session
+    const redirectTo = Linking.createURL('auth/oauth');
     console.log('[WalletAuthService] Google OAuth redirectTo:', redirectTo);
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -120,7 +129,12 @@ export class WalletAuthService {
     if (data?.url) {
       const res = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
       if (res.type === 'success' && res.url) {
-        const { accessToken, refreshToken } = extractTokensFromUrl(res.url);
+        const { accessToken, refreshToken, error, errorDescription } = extractTokensFromUrl(res.url);
+        
+        if (error || errorDescription) {
+          throw new Error(errorDescription || error || 'Authentication failed during Google Sign-In.');
+        }
+
         if (accessToken && refreshToken) {
           const { data: sessionData, error: sessionErr } = await supabase.auth.setSession({
             access_token: accessToken,

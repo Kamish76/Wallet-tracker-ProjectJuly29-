@@ -22,15 +22,15 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
 
 export async function registerBackgroundSync() {
   try {
-    const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_SYNC_TASK);
-    if (!isRegistered) {
-      await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
-        minimumInterval: 15 * 60, // 15 minutes
-        stopOnTerminate: false, // android only,
-        startOnBoot: true, // android only
-      });
-      console.log('[BackgroundTask] Background sync task registered.');
-    }
+    const settings = await SyncEngine.getSettings();
+    const intervalSeconds = (settings.intervalMinutes || 15) * 60;
+    
+    await BackgroundFetch.registerTaskAsync(BACKGROUND_SYNC_TASK, {
+      minimumInterval: intervalSeconds,
+      stopOnTerminate: false, // android only,
+      startOnBoot: true, // android only
+    });
+    console.log(`[BackgroundTask] Background sync task registered with interval ${intervalSeconds}s.`);
   } catch (err) {
     console.error('[BackgroundTask] Failed to register background sync task:', err);
   }

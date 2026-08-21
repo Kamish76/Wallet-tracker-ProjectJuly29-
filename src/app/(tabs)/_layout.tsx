@@ -57,28 +57,28 @@ export default function TabsLayout() {
           name="dashboard"
           options={{
             title: 'Dashboard',
-            tabBarIcon: ({ color, size }) => <LayoutDashboard color={color} size={22} />,
+            tabBarIcon: ({ color }) => <LayoutDashboard color={color} size={25} />,
           }}
         />
         <Tabs.Screen
           name="transactions"
           options={{
             title: 'Transactions',
-            tabBarIcon: ({ color, size }) => <ArrowRightLeft color={color} size={22} />,
+            tabBarIcon: ({ color }) => <ArrowRightLeft color={color} size={25} />,
           }}
         />
         <Tabs.Screen
           name="accounts"
           options={{
             title: 'Accounts',
-            tabBarIcon: ({ color, size }) => <Wallet color={color} size={22} />,
+            tabBarIcon: ({ color }) => <Wallet color={color} size={25} />,
           }}
         />
         <Tabs.Screen
           name="settings"
           options={{
             title: 'Settings',
-            tabBarIcon: ({ color, size }) => <Settings color={color} size={22} />,
+            tabBarIcon: ({ color }) => <Settings color={color} size={25} />,
           }}
         />
       </Tabs>
@@ -130,9 +130,9 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    height: 64,
-    paddingBottom: 8,
-    paddingTop: 6,
+    height: 72,
+    paddingBottom: 14,
+    paddingTop: 8,
   },
   tabLabel: {
     fontSize: 11,
