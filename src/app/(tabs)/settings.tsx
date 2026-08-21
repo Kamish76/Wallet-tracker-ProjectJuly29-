@@ -15,6 +15,7 @@ import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { WidgetService } from '@/lib/widget/widgetService';
+import { registerBackgroundSync } from '@/lib/sync/backgroundTask';
 import { ManageCategoriesModal } from '@/components/ManageCategoriesModal';
 import Slider from '@react-native-community/slider';
 import { Colors } from '@/theme/colors';
@@ -85,6 +86,8 @@ export default function SettingsScreen() {
   const handleUpdateInterval = async (intervalMinutes: number) => {
     const updated = await SyncEngine.updateSettings({ intervalMinutes });
     setSettings(updated);
+    // Re-register to apply new interval to the OS task manager
+    registerBackgroundSync();
   };
 
   const handleUpdateConflict = async (conflictResolution: ConflictResolutionRule) => {
@@ -207,6 +210,8 @@ export default function SettingsScreen() {
         <View style={styles.pillsRow}>
           {(
             [
+              { key: 60, label: '1 hour' },
+              { key: 180, label: '3 hours' },
               { key: 360, label: '6 hours' },
               { key: 720, label: '12 hours' },
               { key: 1440, label: '24 hours' },

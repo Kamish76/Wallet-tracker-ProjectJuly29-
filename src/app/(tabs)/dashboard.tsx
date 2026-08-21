@@ -322,7 +322,7 @@ export default function DashboardScreen() {
         data={transactions}
         keyExtractor={(item) => item.id}
         style={styles.container}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: Tokens.spacing.md, paddingTop: Tokens.spacing.sm, paddingBottom: 100 }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
