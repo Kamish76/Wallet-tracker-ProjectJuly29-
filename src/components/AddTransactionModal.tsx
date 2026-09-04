@@ -14,10 +14,15 @@ import { X, Plus, Delete, AlertCircle } from 'lucide-react-native';
 // Safely evaluates arithmetic expressions without eval()
 function evaluateMathExpression(expr: string): number {
   try {
-    const clean = expr
+    let clean = expr
       .replace(/×/g, '*')
       .replace(/÷/g, '/')
       .replace(/[^0-9+\-*/.]/g, '');
+
+    // Allow leading negative sign
+    if (clean.startsWith('-')) {
+      clean = '0' + clean;
+    }
 
     if (!clean || /^[^0-9(]/.test(clean)) return 0;
 
@@ -136,8 +141,14 @@ export function AddTransactionModal({
       }
       return;
     }
-    if (displayExpr === '0' && '0123456789'.includes(key)) {
-      setDisplayExpr(key);
+    if (displayExpr === '0') {
+      if ('0123456789'.includes(key)) {
+        setDisplayExpr(key);
+      } else if (key === '-') {
+        setDisplayExpr('-');
+      } else {
+        setDisplayExpr('0' + key);
+      }
     } else {
       const lastChar = displayExpr.slice(-1);
       const isOp = '+-×÷.'.includes(key);
