@@ -18,6 +18,7 @@ import { generateUUID } from '@/lib/utils/uuid';
 import { WidgetService } from '@/lib/widget/widgetService';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
+import { calculateAccountBalance } from '@/lib/utils/balance';
 import type { WalletAccount, WalletTransaction, TransactionType, WalletCategory } from '@/types/wallet';
 
 interface EditTransactionModalProps {
@@ -49,6 +50,7 @@ export function EditTransactionModal({
   const [categories, setCategories] = useState<WalletCategory[]>([]);
   const [showCustomCatInput, setShowCustomCatInput] = useState(false);
   const [customCatName, setCustomCatName] = useState('');
+  const [accountBalances, setAccountBalances] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (visible && orgId && transaction) {
@@ -59,6 +61,13 @@ export function EditTransactionModal({
       setCategory(transaction.category ?? '');
       setNotes(transaction.description ?? '');
       OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
+      OfflineDatabase.getTransactions(orgId, 10000, 0).then((allTxs) => {
+        const balances: Record<string, number> = {};
+        for (const acc of accounts) {
+          balances[acc.id] = calculateAccountBalance(acc, allTxs).current_balance;
+        }
+        setAccountBalances(balances);
+      }).catch(() => {});
     } else {
       setShowCustomCatInput(false);
       setCustomCatName('');
@@ -305,7 +314,7 @@ export function EditTransactionModal({
                         accountId === a.id && styles.accPillTextActive,
                       ]}
                     >
-                      {a.name}
+                      {a.name} • {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </Text>
                   </TouchableOpacity>
                 ))
@@ -333,7 +342,7 @@ export function EditTransactionModal({
                             transferToId === a.id && styles.accPillTextActive,
                           ]}
                         >
-                          {a.name}
+                          {a.name} • {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </Text>
                       </TouchableOpacity>
                     ))}
