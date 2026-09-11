@@ -8,8 +8,18 @@ import {
   Alert,
   StyleSheet,
   ScrollView,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { X, Plus, Delete, AlertCircle, ChevronDown } from 'lucide-react-native';
+
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // Safely evaluates arithmetic expressions without eval()
 function evaluateMathExpression(expr: string): number {
@@ -124,6 +134,21 @@ export function AddTransactionModal({
   const [accountBalances, setAccountBalances] = useState<Record<string, number>>({});
   const [showAccountDropdown, setShowAccountDropdown] = useState<'from' | 'to' | null>(null);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [modalHeight, setModalHeight] = useState<number | null>(null);
+
+  const toggleAccountDropdown = (type: 'from' | 'to' | null) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    const nextState = showAccountDropdown === type ? null : type;
+    setShowAccountDropdown(nextState);
+    if (nextState) setShowCategoryDropdown(false);
+  };
+
+  const toggleCategoryDropdown = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    const nextState = !showCategoryDropdown;
+    setShowCategoryDropdown(nextState);
+    if (nextState) setShowAccountDropdown(null);
+  };
 
   const evaluatedAmount = useMemo(() => {
     return evaluateMathExpression(displayExpr);
@@ -165,6 +190,9 @@ export function AddTransactionModal({
 
   useEffect(() => {
     if (visible && orgId) {
+      setModalHeight(null);
+      setShowAccountDropdown(null);
+      setShowCategoryDropdown(false);
       if (initialType) {
         setTxType(initialType);
       }
@@ -314,7 +342,14 @@ export function AddTransactionModal({
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
+        <View 
+          style={[styles.modalCard, modalHeight ? { height: modalHeight } : { maxHeight: '95%' }]}
+          onLayout={(e) => {
+            if (!modalHeight) {
+              setModalHeight(e.nativeEvent.layout.height);
+            }
+          }}
+        >
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Add Transaction</Text>
             <TouchableOpacity
@@ -410,123 +445,130 @@ export function AddTransactionModal({
 
           <View style={styles.selectorsRow}>
             {/* LEFT SELECTOR: Account (or From Account) */}
-            <View style={styles.selectorCol}>
-              <Text style={styles.selectorLabel}>
-                {txType === 'transfer' ? 'From' : 'Account'}
-              </Text>
-              <TouchableOpacity
-                style={styles.selectorButton}
-                onPress={() => setShowAccountDropdown(showAccountDropdown === 'from' ? null : 'from')}
-              >
-                <Text style={styles.selectorButtonText} numberOfLines={1}>
-                  {accounts.find(a => a.id === accountId)?.name || 'Select Account'}
+            {(!showCategoryDropdown) && (
+              <View style={[styles.selectorCol, !!showAccountDropdown && { flex: 1 }]}>
+                <Text style={styles.selectorLabel}>
+                  {txType === 'transfer' ? 'From' : 'Account'}
                 </Text>
-                <ChevronDown size={16} color={Colors.textLight} />
-              </TouchableOpacity>
-              
-              {showAccountDropdown === 'from' && (
-                <View style={styles.dropdownList}>
-                  {accounts.map((a) => (
-                    <TouchableOpacity
-                      key={a.id}
-                      style={[styles.dropdownItem, accountId === a.id && styles.dropdownItemActive]}
-                      onPress={() => {
-                        setAccountId(a.id);
-                        setShowAccountDropdown(null);
-                      }}
-                    >
-                      <Text style={[styles.dropdownItemText, accountId === a.id && styles.dropdownItemTextActive]}>
-                        {a.name}
-                      </Text>
-                      <Text style={styles.dropdownItemSubText}>
-                        {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
+                <TouchableOpacity
+                  style={[styles.selectorButton, !!showAccountDropdown && styles.selectorButtonActive]}
+                  onPress={() => toggleAccountDropdown('from')}
+                >
+                  <Text style={styles.selectorButtonText} numberOfLines={1}>
+                    {accounts.find(a => a.id === accountId)?.name || 'Select Account'}
+                  </Text>
+                  <ChevronDown size={16} color={Colors.textLight} />
+                </TouchableOpacity>
+                
+                {showAccountDropdown === 'from' && (
+                  <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+                    {accounts.map((a) => (
+                      <TouchableOpacity
+                        key={a.id}
+                        style={[styles.dropdownItem, accountId === a.id && styles.dropdownItemActive]}
+                        onPress={() => {
+                          setAccountId(a.id);
+                          toggleAccountDropdown(null);
+                        }}
+                      >
+                        <Text style={[styles.dropdownItemText, accountId === a.id && styles.dropdownItemTextActive]}>
+                          {a.name}
+                        </Text>
+                        <Text style={styles.dropdownItemSubText}>
+                          {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+              </View>
+            )}
 
             {/* RIGHT SELECTOR: Category OR To Account */}
-            <View style={styles.selectorCol}>
-              <Text style={styles.selectorLabel}>
-                {txType === 'transfer' ? 'To' : 'Category'}
-              </Text>
+            {(!showAccountDropdown) && (
+              <View style={[styles.selectorCol, showCategoryDropdown && { flex: 1 }]}>
+                <Text style={styles.selectorLabel}>
+                  {txType === 'transfer' ? 'To' : 'Category'}
+                </Text>
 
-              {txType === 'transfer' ? (
-                <>
-                  <TouchableOpacity
-                    style={styles.selectorButton}
-                    onPress={() => setShowAccountDropdown(showAccountDropdown === 'to' ? null : 'to')}
-                  >
-                    <Text style={styles.selectorButtonText} numberOfLines={1}>
-                      {accounts.find(a => a.id === transferToId)?.name || 'Select Account'}
-                    </Text>
-                    <ChevronDown size={16} color={Colors.textLight} />
-                  </TouchableOpacity>
+                {txType === 'transfer' ? (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.selectorButton, !!showAccountDropdown && styles.selectorButtonActive]}
+                      onPress={() => toggleAccountDropdown('to')}
+                    >
+                      <Text style={styles.selectorButtonText} numberOfLines={1}>
+                        {accounts.find(a => a.id === transferToId)?.name || 'Select Account'}
+                      </Text>
+                      <ChevronDown size={16} color={Colors.textLight} />
+                    </TouchableOpacity>
 
-                  {showAccountDropdown === 'to' && (
-                    <View style={styles.dropdownList}>
-                      {accounts.filter(a => a.id !== accountId).map((a) => (
+                    {showAccountDropdown === 'to' && (
+                      <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+                        {accounts.filter(a => a.id !== accountId).map((a) => (
+                          <TouchableOpacity
+                            key={a.id}
+                            style={[styles.dropdownItem, transferToId === a.id && styles.dropdownItemActive]}
+                            onPress={() => {
+                              setTransferToId(a.id);
+                              toggleAccountDropdown(null);
+                            }}
+                          >
+                            <Text style={[styles.dropdownItemText, transferToId === a.id && styles.dropdownItemTextActive]}>
+                              {a.name}
+                            </Text>
+                            <Text style={styles.dropdownItemSubText}>
+                              {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.selectorButton, showCategoryDropdown && styles.selectorButtonActive]}
+                      onPress={() => toggleCategoryDropdown()}
+                    >
+                      <Text style={styles.selectorButtonText} numberOfLines={1}>
+                        {category || 'Select Category'}
+                      </Text>
+                      <ChevronDown size={16} color={Colors.textLight} />
+                    </TouchableOpacity>
+
+                    {showCategoryDropdown && (
+                      <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+                        {filteredCategories.map((cat) => (
+                          <TouchableOpacity
+                            key={cat.id}
+                            style={[styles.dropdownItem, category === cat.display_name && styles.dropdownItemActive]}
+                            onPress={() => {
+                              setCategory(cat.display_name);
+                              toggleCategoryDropdown();
+                            }}
+                          >
+                            <Text style={[styles.dropdownItemText, category === cat.display_name && styles.dropdownItemTextActive]}>
+                              {cat.display_name}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
                         <TouchableOpacity
-                          key={a.id}
-                          style={[styles.dropdownItem, transferToId === a.id && styles.dropdownItemActive]}
+                          style={styles.dropdownItemAdd}
                           onPress={() => {
-                            setTransferToId(a.id);
-                            setShowAccountDropdown(null);
+                            setShowCustomCatInput(!showCustomCatInput);
+                            toggleCategoryDropdown();
                           }}
                         >
-                          <Text style={[styles.dropdownItemText, transferToId === a.id && styles.dropdownItemTextActive]}>
-                            {a.name}
-                          </Text>
-                          <Text style={styles.dropdownItemSubText}>
-                            {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </Text>
+                          <Plus size={14} color={Colors.primary} />
+                          <Text style={styles.dropdownItemAddText}>+ Custom</Text>
                         </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </>
-              ) : (
-                <>
-                  <TouchableOpacity
-                    style={styles.selectorButton}
-                    onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                  >
-                    <Text style={styles.selectorButtonText} numberOfLines={1}>
-                      {category || 'Select Category'}
-                    </Text>
-                    <ChevronDown size={16} color={Colors.textLight} />
-                  </TouchableOpacity>
-
-                  {showCategoryDropdown && (
-                    <View style={styles.dropdownList}>
-                      {filteredCategories.map((cat) => (
-                        <TouchableOpacity
-                          key={cat.id}
-                          style={[styles.dropdownItem, category === cat.display_name && styles.dropdownItemActive]}
-                          onPress={() => {
-                            setCategory(cat.display_name);
-                            setShowCategoryDropdown(false);
-                          }}
-                        >
-                          <Text style={[styles.dropdownItemText, category === cat.display_name && styles.dropdownItemTextActive]}>
-                            {cat.display_name}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                      <TouchableOpacity
-                        style={styles.dropdownItemAdd}
-                        onPress={() => setShowCustomCatInput(!showCustomCatInput)}
-                      >
-                        <Plus size={14} color={Colors.primary} />
-                        <Text style={styles.dropdownItemAddText}>+ Custom</Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </>
-              )}
-            </View>
+                      </ScrollView>
+                    )}
+                  </>
+                )}
+              </View>
+            )}
           </View>
 
           {showCustomCatInput && txType !== 'transfer' && (
@@ -570,10 +612,9 @@ export function AddTransactionModal({
               {saving ? 'Saving...' : 'Save Transaction'}
             </Text>
           </TouchableOpacity>
-        </ScrollView>
 
           {/* Keypad */}
-          <View style={styles.keypad}>
+          <View style={[styles.keypad, { marginTop: 24 }]}>
             {[
               ['+', '7', '8', '9'],
               ['-', '4', '5', '6'],
@@ -603,6 +644,7 @@ export function AddTransactionModal({
               </View>
             ))}
           </View>
+        </ScrollView>
         </View>
       </View>
     </Modal>
@@ -711,13 +753,17 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
+  selectorButtonActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '15',
+  },
   dropdownList: {
     backgroundColor: Colors.surface,
     borderRadius: Tokens.radius.md,
     borderWidth: 1,
     borderColor: Colors.border,
     marginTop: 4,
-    maxHeight: 200,
+    maxHeight: 250,
     overflow: 'hidden',
   },
   dropdownItem: {
