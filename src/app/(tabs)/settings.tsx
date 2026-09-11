@@ -8,6 +8,7 @@ import {
   Alert,
   StyleSheet,
   Image,
+  Linking,
 } from 'react-native';
 import { router } from 'expo-router';
 import { RefreshCw, LogOut, Check, Wifi, Database, ShieldAlert, Tag } from 'lucide-react-native';
@@ -437,6 +438,17 @@ export default function SettingsScreen() {
         <Text style={styles.aboutText}>
           Android-optimized mobile app for OrgFinance Personal Wallet tracking. Built with Expo React Native, Supabase, and SQLite offline synchronization.
         </Text>
+        <TouchableOpacity 
+          style={{ marginTop: 16 }}
+          onPress={() => Linking.openURL('https://org-finance.vercel.app/')}
+        >
+          <Text style={[styles.aboutText, { color: Colors.primary, fontWeight: '600' }]}>
+            🌐 Explore the full Web Experience
+          </Text>
+          <Text style={[styles.aboutText, { fontSize: 13, opacity: 0.7, marginTop: 4 }]}>
+            org-finance.vercel.app
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ManageCategoriesModal
