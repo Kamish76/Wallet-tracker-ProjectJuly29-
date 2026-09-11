@@ -12,7 +12,7 @@ import {
   Platform,
   UIManager,
 } from 'react-native';
-import Animated, { SlideInLeft, SlideOutLeft, SlideInRight, SlideOutRight, LinearTransition, FadeIn, FadeOut, useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated';
+import Animated, { SlideInLeft, SlideOutLeft, SlideInRight, SlideOutRight, SlideInDown, SlideOutDown, LinearTransition, FadeIn, FadeOut, useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated';
 import { X, Plus, Delete, AlertCircle, ChevronDown } from 'lucide-react-native';
 
 if (
@@ -136,6 +136,26 @@ export function AddTransactionModal({
   const [showAccountDropdown, setShowAccountDropdown] = useState<'from' | 'to' | null>(null);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [modalHeight, setModalHeight] = useState<number | null>(null);
+  const [isAnimationReady, setIsAnimationReady] = useState(false);
+  const [internalVisible, setInternalVisible] = useState(visible);
+
+  useEffect(() => {
+    if (visible) {
+      setInternalVisible(true);
+    } else {
+      const t = setTimeout(() => setInternalVisible(false), 300);
+      return () => clearTimeout(t);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (visible) {
+      const timer = setTimeout(() => setIsAnimationReady(true), 350);
+      return () => clearTimeout(timer);
+    } else {
+      setIsAnimationReady(false);
+    }
+  }, [visible]);
 
   const leftFlex = useDerivedValue(() => {
     if (showAccountDropdown) return withSpring(100, { damping: 50, stiffness: 350 });
@@ -370,9 +390,12 @@ export function AddTransactionModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View 
+    <Modal visible={internalVisible} animationType="none" transparent>
+      {visible && (
+      <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(200)} style={styles.modalOverlay}>
+        <Animated.View 
+          entering={SlideInDown.springify().damping(25).stiffness(250)}
+          exiting={SlideOutDown.duration(200)}
           style={[styles.modalCard, modalHeight ? { height: modalHeight } : { maxHeight: '95%' }]}
           onLayout={(e) => {
             if (!modalHeight) {
@@ -623,7 +646,7 @@ export function AddTransactionModal({
             </Animated.View>
           )}
 
-          <Animated.View layout={LinearTransition.springify().damping(50).stiffness(350)}>
+          <Animated.View layout={isAnimationReady ? LinearTransition.springify().damping(50).stiffness(350) : undefined}>
             <Text style={styles.inputLabel}>Notes (Optional)</Text>
           <TextInput
             style={styles.input}
@@ -676,8 +699,9 @@ export function AddTransactionModal({
           </View>
           </Animated.View>
         </ScrollView>
-        </View>
-      </View>
+        </Animated.View>
+      </Animated.View>
+      )}
     </Modal>
   );
 }
