@@ -10,6 +10,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { RefreshCw, LogOut, Check, Wifi, Database, ShieldAlert, Tag, ChevronDown } from 'lucide-react-native';
@@ -173,14 +174,27 @@ export default function SettingsScreen() {
   };
 
   const openCurrencyModal = () => {
-    buttonRef.current?.measure((x, y, width, height, pageX, pageY) => {
-      setDropdownLayout({
-        top: pageY + height + 8,
-        left: pageX,
-        width: Math.max(width, 160),
+    if (Platform.OS === 'web') {
+      const node = buttonRef.current as any;
+      if (node && typeof node.getBoundingClientRect === 'function') {
+        const rect = node.getBoundingClientRect();
+        setDropdownLayout({
+          top: rect.top + rect.height + 8,
+          left: rect.left,
+          width: Math.max(rect.width, 160),
+        });
+        setCurrencyModalVisible(true);
+      }
+    } else {
+      buttonRef.current?.measure((x, y, width, height, pageX, pageY) => {
+        setDropdownLayout({
+          top: pageY + height + 8,
+          left: pageX,
+          width: Math.max(width, 160),
+        });
+        setCurrencyModalVisible(true);
       });
-      setCurrencyModalVisible(true);
-    });
+    }
   };
 
   return (
