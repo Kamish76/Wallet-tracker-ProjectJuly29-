@@ -9,7 +9,7 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native';
-import { X, Plus, Delete, AlertCircle } from 'lucide-react-native';
+import { X, Plus, Delete, AlertCircle, ChevronDown } from 'lucide-react-native';
 
 // Safely evaluates arithmetic expressions without eval()
 function evaluateMathExpression(expr: string): number {
@@ -122,6 +122,8 @@ export function AddTransactionModal({
   const inputRef = useRef<TextInput>(null);
   const [customCatName, setCustomCatName] = useState('');
   const [accountBalances, setAccountBalances] = useState<Record<string, number>>({});
+  const [showAccountDropdown, setShowAccountDropdown] = useState<'from' | 'to' | null>(null);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
   const evaluatedAmount = useMemo(() => {
     return evaluateMathExpression(displayExpr);
@@ -180,6 +182,8 @@ export function AddTransactionModal({
     } else {
       setShowCustomCatInput(false);
       setCustomCatName('');
+      setShowAccountDropdown(null);
+      setShowCategoryDropdown(false);
     }
   }, [visible, accounts, accountId, initialType, orgId]);
 
@@ -404,123 +408,148 @@ export function AddTransactionModal({
               )}
             </TouchableOpacity>
 
-          <Text style={styles.inputLabel}>Sub-Account</Text>
-          <View style={styles.accountPickerRow}>
-            {accounts.length === 0 ? (
-              <Text style={{ color: Colors.textMuted, fontStyle: 'italic' }}>
-                No sub-accounts found. Create one in the Accounts tab!
+          <View style={styles.selectorsRow}>
+            {/* LEFT SELECTOR: Account (or From Account) */}
+            <View style={styles.selectorCol}>
+              <Text style={styles.selectorLabel}>
+                {txType === 'transfer' ? 'From' : 'Account'}
               </Text>
-            ) : (
-              accounts.map((a) => (
-                <TouchableOpacity
-                  key={a.id}
-                  style={[
-                    styles.accPill,
-                    accountId === a.id && styles.accPillActive,
-                  ]}
-                  onPress={() => setAccountId(a.id)}
-                >
-                  <Text
-                    style={[
-                      styles.accPillText,
-                      accountId === a.id && styles.accPillTextActive,
-                    ]}
-                  >
-                    {a.name} • {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </Text>
-                </TouchableOpacity>
-              ))
-            )}
-          </View>
-
-          {txType === 'transfer' && (
-            <>
-              <Text style={styles.inputLabel}>Transfer To</Text>
-              <View style={styles.accountPickerRow}>
-                {accounts
-                  .filter((a) => a.id !== accountId)
-                  .map((a) => (
+              <TouchableOpacity
+                style={styles.selectorButton}
+                onPress={() => setShowAccountDropdown(showAccountDropdown === 'from' ? null : 'from')}
+              >
+                <Text style={styles.selectorButtonText} numberOfLines={1}>
+                  {accounts.find(a => a.id === accountId)?.name || 'Select Account'}
+                </Text>
+                <ChevronDown size={16} color={Colors.textLight} />
+              </TouchableOpacity>
+              
+              {showAccountDropdown === 'from' && (
+                <View style={styles.dropdownList}>
+                  {accounts.map((a) => (
                     <TouchableOpacity
                       key={a.id}
-                      style={[
-                        styles.accPill,
-                        transferToId === a.id && styles.accPillActive,
-                      ]}
-                      onPress={() => setTransferToId(a.id)}
+                      style={[styles.dropdownItem, accountId === a.id && styles.dropdownItemActive]}
+                      onPress={() => {
+                        setAccountId(a.id);
+                        setShowAccountDropdown(null);
+                      }}
                     >
-                      <Text
-                        style={[
-                          styles.accPillText,
-                          transferToId === a.id && styles.accPillTextActive,
-                        ]}
-                      >
-                        {a.name} • {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <Text style={[styles.dropdownItemText, accountId === a.id && styles.dropdownItemTextActive]}>
+                        {a.name}
+                      </Text>
+                      <Text style={styles.dropdownItemSubText}>
+                        {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </Text>
                     </TouchableOpacity>
                   ))}
-              </View>
-            </>
-          )}
-
-          {txType !== 'transfer' && (
-            <>
-              <Text style={styles.inputLabel}>Category</Text>
-              <View style={styles.categoryPillsContainer}>
-                {filteredCategories.map((cat) => {
-                  const isSelected = category === cat.display_name;
-                  return (
-                    <TouchableOpacity
-                      key={cat.id}
-                      style={[
-                        styles.categoryPill,
-                        isSelected && styles.categoryPillSelected,
-                      ]}
-                      onPress={() => setCategory(cat.display_name)}
-                    >
-                      <Text
-                        style={[
-                          styles.categoryPillText,
-                          isSelected && styles.categoryPillTextSelected,
-                        ]}
-                      >
-                        {cat.display_name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-
-                <TouchableOpacity
-                  style={styles.addCategoryPill}
-                  onPress={() => setShowCustomCatInput(!showCustomCatInput)}
-                >
-                  <Plus size={14} color={Colors.primary} />
-                  <Text style={styles.addCategoryPillText}>+ Custom</Text>
-                </TouchableOpacity>
-              </View>
-
-              {showCustomCatInput && (
-                <View style={styles.customCategoryRow}>
-                  <TextInput
-                    style={styles.customCategoryInput}
-                    placeholder="Enter custom category name..."
-                    placeholderTextColor={Colors.textDim}
-                    value={customCatName}
-                    onChangeText={setCustomCatName}
-                    maxLength={60}
-                  />
-                  <TouchableOpacity
-                    style={[
-                      styles.customCategoryAddBtn,
-                      !customCatName.trim() && { opacity: 0.4 },
-                    ]}
-                    onPress={handleCreateCustomCategory}
-                    disabled={!customCatName.trim()}
-                  >
-                    <Text style={styles.customCategoryAddBtnText}>Add</Text>
-                  </TouchableOpacity>
                 </View>
               )}
-            </>
+            </View>
+
+            {/* RIGHT SELECTOR: Category OR To Account */}
+            <View style={styles.selectorCol}>
+              <Text style={styles.selectorLabel}>
+                {txType === 'transfer' ? 'To' : 'Category'}
+              </Text>
+
+              {txType === 'transfer' ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.selectorButton}
+                    onPress={() => setShowAccountDropdown(showAccountDropdown === 'to' ? null : 'to')}
+                  >
+                    <Text style={styles.selectorButtonText} numberOfLines={1}>
+                      {accounts.find(a => a.id === transferToId)?.name || 'Select Account'}
+                    </Text>
+                    <ChevronDown size={16} color={Colors.textLight} />
+                  </TouchableOpacity>
+
+                  {showAccountDropdown === 'to' && (
+                    <View style={styles.dropdownList}>
+                      {accounts.filter(a => a.id !== accountId).map((a) => (
+                        <TouchableOpacity
+                          key={a.id}
+                          style={[styles.dropdownItem, transferToId === a.id && styles.dropdownItemActive]}
+                          onPress={() => {
+                            setTransferToId(a.id);
+                            setShowAccountDropdown(null);
+                          }}
+                        >
+                          <Text style={[styles.dropdownItemText, transferToId === a.id && styles.dropdownItemTextActive]}>
+                            {a.name}
+                          </Text>
+                          <Text style={styles.dropdownItemSubText}>
+                            {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={styles.selectorButton}
+                    onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                  >
+                    <Text style={styles.selectorButtonText} numberOfLines={1}>
+                      {category || 'Select Category'}
+                    </Text>
+                    <ChevronDown size={16} color={Colors.textLight} />
+                  </TouchableOpacity>
+
+                  {showCategoryDropdown && (
+                    <View style={styles.dropdownList}>
+                      {filteredCategories.map((cat) => (
+                        <TouchableOpacity
+                          key={cat.id}
+                          style={[styles.dropdownItem, category === cat.display_name && styles.dropdownItemActive]}
+                          onPress={() => {
+                            setCategory(cat.display_name);
+                            setShowCategoryDropdown(false);
+                          }}
+                        >
+                          <Text style={[styles.dropdownItemText, category === cat.display_name && styles.dropdownItemTextActive]}>
+                            {cat.display_name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                      <TouchableOpacity
+                        style={styles.dropdownItemAdd}
+                        onPress={() => setShowCustomCatInput(!showCustomCatInput)}
+                      >
+                        <Plus size={14} color={Colors.primary} />
+                        <Text style={styles.dropdownItemAddText}>+ Custom</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </>
+              )}
+            </View>
+          </View>
+
+          {showCustomCatInput && txType !== 'transfer' && (
+            <View style={[styles.customCategoryRow, { marginTop: 12 }]}>
+              <TextInput
+                style={styles.customCategoryInput}
+                placeholder="Enter custom category name..."
+                placeholderTextColor={Colors.textDim}
+                value={customCatName}
+                onChangeText={setCustomCatName}
+                maxLength={60}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.customCategoryAddBtn,
+                  !customCatName.trim() && { opacity: 0.4 },
+                ]}
+                onPress={handleCreateCustomCategory}
+                disabled={!customCatName.trim()}
+              >
+                <Text style={styles.customCategoryAddBtnText}>Add</Text>
+              </TouchableOpacity>
+            </View>
           )}
 
           <Text style={styles.inputLabel}>Notes (Optional)</Text>
@@ -647,6 +676,85 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginTop: 4,
+  },
+  selectorsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+    zIndex: 10,
+  },
+  selectorCol: {
+    flex: 1,
+    position: 'relative',
+  },
+  selectorLabel: {
+    ...Tokens.typography.caption,
+    color: Colors.textLight,
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  selectorButton: {
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Tokens.radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  selectorButtonText: {
+    fontSize: 14,
+    color: Colors.textWhite,
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 8,
+  },
+  dropdownList: {
+    backgroundColor: Colors.surface,
+    borderRadius: Tokens.radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginTop: 4,
+    maxHeight: 200,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceElevated,
+  },
+  dropdownItemActive: {
+    backgroundColor: Colors.secondary + '20',
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    color: Colors.textLight,
+  },
+  dropdownItemTextActive: {
+    color: Colors.secondary,
+    fontWeight: '600',
+  },
+  dropdownItemSubText: {
+    fontSize: 12,
+    color: Colors.textDim,
+  },
+  dropdownItemAdd: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dropdownItemAddText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '600',
   },
   accPill: {
     paddingHorizontal: 14,
