@@ -220,21 +220,23 @@ export default function SettingsScreen() {
           Unified access with OrgFinance web app (Personal Wallet Mode)
         </Text>
 
-        <View ref={buttonRef} style={{ alignSelf: 'flex-start' }} collapsable={false}>
-          <TouchableOpacity 
-            style={styles.currencySelectorButton} 
-            onPress={openCurrencyModal}
-          >
-            <Text style={styles.currencySelectorLabel}>Currency:</Text>
-            <Text style={styles.currencySelectorValue}>{currency}</Text>
-            <ChevronDown size={16} color={Colors.textLight} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View ref={buttonRef} collapsable={false}>
+            <TouchableOpacity 
+              style={[styles.currencySelectorButton, { marginBottom: 0 }]} 
+              onPress={openCurrencyModal}
+            >
+              <Text style={styles.currencySelectorLabel}>Currency:</Text>
+              <Text style={styles.currencySelectorValue}>{currency}</Text>
+              <ChevronDown size={16} color={Colors.textLight} />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={[styles.signOutButton, { alignSelf: 'auto' }]} onPress={handleSignOut}>
+            <LogOut size={16} color={Colors.expense} />
+            <Text style={styles.signOutButtonText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-          <LogOut size={16} color={Colors.expense} />
-          <Text style={styles.signOutButtonText}>Sign Out</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Offline & Sync Settings Section */}
