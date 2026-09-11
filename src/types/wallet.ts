@@ -88,7 +88,8 @@ export type SyncQueueAction =
   | 'DELETE_ACCOUNT'
   | 'CREATE_CATEGORY'
   | 'UPDATE_CATEGORY'
-  | 'DELETE_CATEGORY';
+  | 'DELETE_CATEGORY'
+  | 'UPDATE_ORGANIZATION';
 
 export type OfflineSyncQueueItem = {
   id: string;

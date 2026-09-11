@@ -155,17 +155,20 @@ export default function SettingsScreen() {
     if (!orgId) return;
     setUpdatingCurrency(true);
     try {
-      const { error } = await supabase
-        .from('organizations')
-        .update({ currency: newCurrency })
-        .eq('id', orgId);
-
-      if (error) throw error;
+      await OfflineDatabase.enqueueMutation('UPDATE_ORGANIZATION', {
+        id: orgId,
+        currency: newCurrency
+      });
 
       await WalletAuthService.updateCachedCurrency(newCurrency);
       setCurrency(newCurrency);
       setCurrencyModalVisible(false);
+      
       WidgetService.refreshWidgetData(orgId).catch(() => {});
+      SyncEngine.syncNow().catch(() => {});
+
+      // Force an app reload so other tabs fetch the new currency immediately
+      router.replace('/');
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to update currency.');
     } finally {

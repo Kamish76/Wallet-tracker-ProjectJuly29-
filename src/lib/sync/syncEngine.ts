@@ -321,6 +321,13 @@ export class SyncEngine {
             .eq('organization_id', payload.organization_id);
           if (!error) success = true;
           else throw error;
+        } else if (item.action === 'UPDATE_ORGANIZATION') {
+          const { error } = await supabaseAdmin
+            .from('organizations')
+            .update({ currency: payload.currency })
+            .eq('id', payload.id);
+          if (!error) success = true;
+          else throw error;
         }
 
         if (success) {
