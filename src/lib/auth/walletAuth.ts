@@ -86,7 +86,7 @@ export class WalletAuthService {
     }
   }
 
-  private static async setCachedCurrency(currency: string) {
+  public static async updateCachedCurrency(currency: string) {
     this.cachedCurrency = currency;
     try {
       await AsyncStorage.setItem(this.PRIMARY_ORG_CURRENCY_KEY, currency);
@@ -281,7 +281,7 @@ export class WalletAuthService {
         if (isWalletOrganization(org.description, (org as any).is_wallet)) {
           console.log('[WalletAuthService] Using Personal Wallet org:', org.id);
           await this.setCachedOrgId(org.id);
-          await this.setCachedCurrency(org.currency || 'USD');
+          await this.updateCachedCurrency(org.currency || 'USD');
           if (!this.hasPulledInitialData) {
             this.hasPulledInitialData = true;
             await SyncEngine.firstTimeAutoSync(org.id);
@@ -294,7 +294,7 @@ export class WalletAuthService {
       const firstOrg = userOrgs[0];
       console.log('[WalletAuthService] Using existing org as Personal Wallet fallback:', firstOrg.id);
       await this.setCachedOrgId(firstOrg.id);
-      await this.setCachedCurrency(firstOrg.currency || 'USD');
+      await this.updateCachedCurrency(firstOrg.currency || 'USD');
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
         await SyncEngine.firstTimeAutoSync(firstOrg.id);
@@ -351,7 +351,7 @@ export class WalletAuthService {
     }
 
     await this.setCachedOrgId(newOrg.id);
-    await this.setCachedCurrency('USD');
+    await this.updateCachedCurrency('USD');
     this.hasPulledInitialData = true;
     await SyncEngine.firstTimeAutoSync(newOrg.id);
     return { organizationId: newOrg.id, currency: 'USD', createdNew: true };

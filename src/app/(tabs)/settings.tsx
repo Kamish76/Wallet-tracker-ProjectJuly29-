@@ -11,7 +11,8 @@ import {
   Linking,
 } from 'react-native';
 import { router } from 'expo-router';
-import { RefreshCw, LogOut, Check, Wifi, Database, ShieldAlert, Tag } from 'lucide-react-native';
+import { RefreshCw, LogOut, Check, Wifi, Database, ShieldAlert, Tag, ChevronDown } from 'lucide-react-native';
+import { supabase } from '@/lib/supabase/client';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { OfflineDatabase } from '@/lib/database/sqlite';
@@ -40,6 +41,10 @@ export default function SettingsScreen() {
   const [currency, setCurrency] = useState('USD');
   const [categories, setCategories] = useState<WalletCategory[]>([]);
   const [categoriesModalVisible, setCategoriesModalVisible] = useState(false);
+  const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
+  const [updatingCurrency, setUpdatingCurrency] = useState(false);
+
+  const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'PHP'];
 
   const loadCategories = async (organizationId: string) => {
     try {
@@ -142,6 +147,28 @@ export default function SettingsScreen() {
     setUpdatingWidget(false);
   };
 
+  const handleUpdateCurrency = async (newCurrency: string) => {
+    if (!orgId) return;
+    setUpdatingCurrency(true);
+    try {
+      const { error } = await supabase
+        .from('organizations')
+        .update({ currency: newCurrency })
+        .eq('id', orgId);
+
+      if (error) throw error;
+
+      await WalletAuthService.updateCachedCurrency(newCurrency);
+      setCurrency(newCurrency);
+      setCurrencyModalVisible(false);
+      WidgetService.refreshWidgetData(orgId).catch(() => {});
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to update currency.');
+    } finally {
+      setUpdatingCurrency(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header */}
@@ -158,12 +185,18 @@ export default function SettingsScreen() {
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>ORGANIZATION ACCOUNT</Text>
         <Text style={styles.profileEmail}>{userEmail}</Text>
-        <Text style={[styles.profileSubtext, { marginBottom: 4 }]}>
+        <Text style={[styles.profileSubtext, { marginBottom: Tokens.spacing.md }]}>
           Unified access with OrgFinance web app (Personal Wallet Mode)
         </Text>
-        <Text style={[styles.profileSubtext, { color: Colors.primary, fontWeight: '700' }]}>
-          Currency: {currency}
-        </Text>
+
+        <TouchableOpacity 
+          style={styles.currencySelectorButton} 
+          onPress={() => setCurrencyModalVisible(true)}
+        >
+          <Text style={styles.currencySelectorLabel}>Currency:</Text>
+          <Text style={styles.currencySelectorValue}>{currency}</Text>
+          <ChevronDown size={16} color={Colors.textLight} />
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
           <LogOut size={16} color={Colors.expense} />
@@ -462,6 +495,47 @@ export default function SettingsScreen() {
         orgId={orgId}
         onCategoriesChanged={() => orgId && loadCategories(orgId)}
       />
+
+      {/* Currency Selector Modal */}
+      {currencyModalVisible && (
+        <View style={styles.currencyModalOverlay}>
+          <View style={styles.currencyModalCard}>
+            <View style={styles.currencyModalHeader}>
+              <Text style={styles.currencyModalTitle}>Select Currency</Text>
+            </View>
+            <View style={styles.currencyList}>
+              {SUPPORTED_CURRENCIES.map((cur) => (
+                <TouchableOpacity
+                  key={cur}
+                  style={[
+                    styles.currencyItem,
+                    currency === cur && styles.currencyItemActive,
+                  ]}
+                  disabled={updatingCurrency}
+                  onPress={() => handleUpdateCurrency(cur)}
+                >
+                  <Text
+                    style={[
+                      styles.currencyItemText,
+                      currency === cur && styles.currencyItemTextActive,
+                    ]}
+                  >
+                    {cur}
+                  </Text>
+                  {currency === cur && <Check size={18} color={Colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity
+              style={styles.currencyModalCancelBtn}
+              onPress={() => setCurrencyModalVisible(false)}
+              disabled={updatingCurrency}
+            >
+              <Text style={styles.currencyModalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -524,6 +598,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.expense,
     marginLeft: 8,
+  },
+  currencySelectorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceElevated,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: Tokens.radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Tokens.spacing.lg,
+    alignSelf: 'flex-start',
+  },
+  currencySelectorLabel: {
+    ...Tokens.typography.caption,
+    color: Colors.textMuted,
+    marginRight: 8,
+  },
+  currencySelectorValue: {
+    ...Tokens.typography.body,
+    fontWeight: '700',
+    color: Colors.primary,
+    marginRight: 8,
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -733,6 +830,69 @@ const styles = StyleSheet.create({
     ...Tokens.typography.body,
     color: Colors.background,
     fontWeight: '700',
+  },
+  currencyModalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: Colors.overlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+    padding: Tokens.spacing.lg,
+  },
+  currencyModalCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Tokens.radius.lg,
+    width: '100%',
+    maxWidth: 340,
+    padding: Tokens.spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.borderGlow,
+  },
+  currencyModalHeader: {
+    marginBottom: Tokens.spacing.lg,
+    alignItems: 'center',
+  },
+  currencyModalTitle: {
+    ...Tokens.typography.h2,
+  },
+  currencyList: {
+    marginBottom: Tokens.spacing.lg,
+  },
+  currencyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: Tokens.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceElevated,
+  },
+  currencyItemActive: {
+    backgroundColor: Colors.primaryDark,
+    borderRadius: Tokens.radius.md,
+    borderBottomWidth: 0,
+  },
+  currencyItemText: {
+    fontSize: 16,
+    color: Colors.textWhite,
+  },
+  currencyItemTextActive: {
+    fontWeight: '700',
+    color: Colors.background,
+  },
+  currencyModalCancelBtn: {
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderRadius: Tokens.radius.md,
+    backgroundColor: Colors.surfaceElevated,
+  },
+  currencyModalCancelText: {
+    ...Tokens.typography.body,
+    fontWeight: '600',
   },
 });
 
