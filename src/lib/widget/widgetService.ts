@@ -3,6 +3,7 @@ import { requestWidgetUpdate } from 'react-native-android-widget';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { calculateTotalNetBalance } from '@/lib/utils/balance';
+import { formatCurrency } from '@/lib/utils/currency';
 import { OrgWalletWidget } from '@/widgets/OrgWalletWidget';
 import React from 'react';
 import { Platform } from 'react-native';
@@ -71,13 +72,11 @@ export class WidgetService {
       }
 
       if (orgId) {
+        const currency = await WalletAuthService.getCachedCurrencyAsync();
         const accounts = await OfflineDatabase.getAccounts(orgId);
         const transactions = await OfflineDatabase.getTransactions(orgId, 500);
         const totalBalance = calculateTotalNetBalance(accounts, transactions);
-        balanceStr = '$' + totalBalance.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        });
+        balanceStr = formatCurrency(totalBalance, currency);
         await AsyncStorage.setItem(WIDGET_LAST_BALANCE_KEY, balanceStr);
       }
     } catch (error) {

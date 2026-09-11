@@ -36,6 +36,7 @@ export default function TransactionsScreen() {
   const [selectedTx, setSelectedTx] = useState<WalletTransaction | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [currency, setCurrency] = useState('USD');
   const [refreshing, setRefreshing] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -112,8 +113,9 @@ export default function TransactionsScreen() {
       const session = await WalletAuthService.getSession();
       if (!session?.user) return;
       setUserId(session.user.id);
-      const { organizationId } = await WalletAuthService.resolveUserWallet(session.user.id);
+      const { organizationId, currency: fetchedCurrency } = await WalletAuthService.resolveUserWallet(session.user.id);
       setOrgId(organizationId);
+      setCurrency(fetchedCurrency);
       await loadLocalData(organizationId);
     }
     init();
@@ -225,6 +227,7 @@ export default function TransactionsScreen() {
             accounts={accounts}
             onEdit={handleEditTransaction}
             onDelete={handleDeleteConfirm}
+            currency={currency}
           />
         )}
       />
@@ -250,6 +253,7 @@ export default function TransactionsScreen() {
         orgId={orgId}
         userId={userId}
         accounts={accounts}
+        currency={currency}
       />
 
       {/* Shared Edit Transaction Modal */}
@@ -266,6 +270,7 @@ export default function TransactionsScreen() {
         userId={userId}
         accounts={accounts}
         transaction={selectedTx}
+        currency={currency}
       />
     </View>
   );

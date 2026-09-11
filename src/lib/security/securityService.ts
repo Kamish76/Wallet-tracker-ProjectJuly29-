@@ -47,7 +47,7 @@ export class SecurityService {
    */
   public static validateAmount(
     amount: any,
-    options?: { min?: number; max?: number }
+    options?: { min?: number; max?: number; currency?: string }
   ): { isValid: boolean; value: number; error?: string } {
     const num = typeof amount === 'number' ? amount : parseFloat(String(amount));
 
@@ -57,12 +57,23 @@ export class SecurityService {
 
     const min = options?.min ?? 0.01;
     const max = options?.max ?? 1_000_000_000; // 1 Billion cap to prevent integer overflow
+    const currency = options?.currency || 'USD';
+
+    // Import dynamically or inline to avoid circular dependencies if any, but since we are in lib/security, it's fine.
+    // For simplicity, we just use Intl directly here to avoid adding an import that might fail
+    const format = (val: number) => {
+      try {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 2 }).format(val);
+      } catch {
+        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(val);
+      }
+    };
 
     if (num < min) {
-      return { isValid: false, value: num, error: `Amount must be at least $${min.toFixed(2)}.` };
+      return { isValid: false, value: num, error: `Amount must be at least ${format(min)}.` };
     }
     if (num > max) {
-      return { isValid: false, value: num, error: `Amount exceeds maximum limit of $${max.toLocaleString()}.` };
+      return { isValid: false, value: num, error: `Amount exceeds maximum limit of ${format(max)}.` };
     }
 
     // Round to 2 decimal places to prevent floating-point drift

@@ -100,6 +100,7 @@ import { WidgetService } from '@/lib/widget/widgetService';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
 import { calculateAccountBalance } from '@/lib/utils/balance';
+import { formatCurrency } from '@/lib/utils/currency';
 import type { WalletAccount, WalletTransaction, TransactionType, WalletCategory } from '@/types/wallet';
 
 interface AddTransactionModalProps {
@@ -110,6 +111,7 @@ interface AddTransactionModalProps {
   userId: string | null;
   accounts: WalletAccount[];
   initialType?: TransactionType;
+  currency?: string;
 }
 
 export function AddTransactionModal({
@@ -120,6 +122,7 @@ export function AddTransactionModal({
   userId,
   accounts,
   initialType,
+  currency = 'USD',
 }: AddTransactionModalProps) {
   const [txType, setTxType] = useState<TransactionType>('expense_personal');
   const [displayExpr, setDisplayExpr] = useState('0');
@@ -481,7 +484,7 @@ export function AddTransactionModal({
                     {displayExpr}
                   </Text>
                   {displayExpr.match(/[+\-×÷]/) && (
-                    <Text style={styles.evalText}>= ${evaluatedAmount.toFixed(2)}</Text>
+                    <Text style={styles.evalText}>= {formatCurrency(evaluatedAmount, currency)}</Text>
                   )}
                 </View>
                 <TouchableOpacity onPress={() => handleKeypadPress('BACKSPACE')} style={styles.backspaceBtn}>
@@ -560,7 +563,7 @@ export function AddTransactionModal({
                       {a.name}
                     </Text>
                     <Text style={styles.dropdownItemSubText}>
-                      {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrency(accountBalances[a.id] || 0, currency)}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -584,7 +587,7 @@ export function AddTransactionModal({
                       {a.name}
                     </Text>
                     <Text style={styles.dropdownItemSubText}>
-                      {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatCurrency(accountBalances[a.id] || 0, currency)}
                     </Text>
                   </TouchableOpacity>
                 ))}

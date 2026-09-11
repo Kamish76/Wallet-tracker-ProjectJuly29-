@@ -19,6 +19,7 @@ import { WidgetService } from '@/lib/widget/widgetService';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
 import { calculateAccountBalance } from '@/lib/utils/balance';
+import { formatCurrency } from '@/lib/utils/currency';
 import type { WalletAccount, WalletTransaction, TransactionType, WalletCategory } from '@/types/wallet';
 
 interface EditTransactionModalProps {
@@ -29,6 +30,7 @@ interface EditTransactionModalProps {
   userId: string | null;
   accounts: WalletAccount[];
   transaction: WalletTransaction | null;
+  currency?: string;
 }
 
 export function EditTransactionModal({
@@ -39,6 +41,7 @@ export function EditTransactionModal({
   userId,
   accounts,
   transaction,
+  currency = 'USD',
 }: EditTransactionModalProps) {
   const [txType, setTxType] = useState<TransactionType>('expense_personal');
   const [amount, setAmount] = useState('');
@@ -314,7 +317,7 @@ export function EditTransactionModal({
                         accountId === a.id && styles.accPillTextActive,
                       ]}
                     >
-                      {a.name} • {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {a.name} • {formatCurrency(accountBalances[a.id] || 0, currency)}
                     </Text>
                   </TouchableOpacity>
                 ))
@@ -342,7 +345,7 @@ export function EditTransactionModal({
                             transferToId === a.id && styles.accPillTextActive,
                           ]}
                         >
-                          {a.name} • {accountBalances[a.id] < 0 ? '-' : ''}${Math.abs(accountBalances[a.id] || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {a.name} • {formatCurrency(accountBalances[a.id] || 0, currency)}
                         </Text>
                       </TouchableOpacity>
                     ))}

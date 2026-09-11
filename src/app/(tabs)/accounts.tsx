@@ -17,6 +17,7 @@ import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import { getAccountsWithBalances, type AccountWithBalance } from '@/lib/utils/balance';
+import { formatCurrency } from '@/lib/utils/currency';
 import { generateUUID } from '@/lib/utils/uuid';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
@@ -30,6 +31,7 @@ export default function AccountsScreen() {
   const [accName, setAccName] = useState('');
   const [startingVal, setStartingVal] = useState('0');
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [currency, setCurrency] = useState('USD');
   const [saving, setSaving] = useState(false);
 
   const openCreateModal = () => {
@@ -57,8 +59,9 @@ export default function AccountsScreen() {
     async function init() {
       const session = await WalletAuthService.getSession();
       if (!session?.user) return;
-      const { organizationId } = await WalletAuthService.resolveUserWallet(session.user.id);
+      const { organizationId, currency: fetchedCurrency } = await WalletAuthService.resolveUserWallet(session.user.id);
       setOrgId(organizationId);
+      setCurrency(fetchedCurrency);
       await loadLocalAccounts(organizationId, showArchived);
     }
     init();
@@ -320,7 +323,7 @@ export default function AccountsScreen() {
                     {acc.name} {!acc.is_active && '(Archived)'}
                   </Text>
                   <Text style={styles.accBalanceLarge}>
-                    {Number(acc.current_balance || 0) < 0 ? '-' : ''}${Math.abs(Number(acc.current_balance || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatCurrency(Number(acc.current_balance || 0), currency)}
                   </Text>
                 </View>
               </View>
@@ -373,7 +376,7 @@ export default function AccountsScreen() {
               onChangeText={setAccName}
             />
 
-            <Text style={styles.inputLabel}>Starting Value ($)</Text>
+            <Text style={styles.inputLabel}>Starting Value</Text>
             <TextInput
               style={styles.input}
               placeholder="0.00"

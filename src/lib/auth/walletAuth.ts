@@ -44,8 +44,10 @@ export function extractTokensFromUrl(url: string): { accessToken?: string; refre
 
 export class WalletAuthService {
   private static cachedOrgId: string | null = null;
+  private static cachedCurrency: string | null = null;
   private static hasPulledInitialData = false;
   private static readonly PRIMARY_ORG_KEY = '@orgwallet_primary_org_id';
+  private static readonly PRIMARY_ORG_CURRENCY_KEY = '@orgwallet_primary_org_currency';
 
   public static async getCachedOrgIdAsync(): Promise<string | null> {
     if (this.cachedOrgId) return this.cachedOrgId;
@@ -61,6 +63,20 @@ export class WalletAuthService {
     return null;
   }
 
+  public static async getCachedCurrencyAsync(): Promise<string> {
+    if (this.cachedCurrency) return this.cachedCurrency;
+    try {
+      const stored = await AsyncStorage.getItem(this.PRIMARY_ORG_CURRENCY_KEY);
+      if (stored) {
+        this.cachedCurrency = stored;
+        return stored;
+      }
+    } catch (e) {
+      console.error('[WalletAuthService] Failed to read cached currency:', e);
+    }
+    return 'USD';
+  }
+
   private static async setCachedOrgId(orgId: string) {
     this.cachedOrgId = orgId;
     try {
@@ -70,11 +86,22 @@ export class WalletAuthService {
     }
   }
 
+  private static async setCachedCurrency(currency: string) {
+    this.cachedCurrency = currency;
+    try {
+      await AsyncStorage.setItem(this.PRIMARY_ORG_CURRENCY_KEY, currency);
+    } catch (e) {
+      console.error('[WalletAuthService] Failed to write cached currency:', e);
+    }
+  }
+
   public static async clearCache() {
     this.cachedOrgId = null;
+    this.cachedCurrency = null;
     this.hasPulledInitialData = false;
     try {
       await AsyncStorage.removeItem(this.PRIMARY_ORG_KEY);
+      await AsyncStorage.removeItem(this.PRIMARY_ORG_CURRENCY_KEY);
     } catch (e) {}
   }
 
@@ -209,20 +236,21 @@ export class WalletAuthService {
   }
 
   // --- Rule #2: Personal Wallet Resolution & Auto-Spawning ---
-  public static async resolveUserWallet(userId: string): Promise<{ organizationId: string; createdNew: boolean }> {
+  public static async resolveUserWallet(userId: string): Promise<{ organizationId: string; currency: string; createdNew: boolean }> {
     const cachedId = await this.getCachedOrgIdAsync();
+    const cachedCurrency = await this.getCachedCurrencyAsync();
     if (cachedId) {
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
         await SyncEngine.firstTimeAutoSync(cachedId);
       }
-      return { organizationId: cachedId, createdNew: false };
+      return { organizationId: cachedId, currency: cachedCurrency, createdNew: false };
     }
 
     // Step 1: Query organizations owned by this specific userId OR where userId is an active member
     const { data: ownedOrgs } = await supabaseAdmin
       .from('organizations')
-      .select('id, name, description, owner_id')
+      .select('id, name, description, owner_id, currency')
       .eq('owner_id', userId);
 
     const { data: memberRows } = await supabaseAdmin
@@ -236,7 +264,7 @@ export class WalletAuthService {
     if (memberOrgIds.length > 0) {
       const { data: mOrgs } = await supabaseAdmin
         .from('organizations')
-        .select('id, name, description, owner_id')
+        .select('id, name, description, owner_id, currency')
         .in('id', memberOrgIds);
       if (mOrgs) memberOrgs = mOrgs;
     }
@@ -253,11 +281,12 @@ export class WalletAuthService {
         if (isWalletOrganization(org.description, (org as any).is_wallet)) {
           console.log('[WalletAuthService] Using Personal Wallet org:', org.id);
           await this.setCachedOrgId(org.id);
+          await this.setCachedCurrency(org.currency || 'USD');
           if (!this.hasPulledInitialData) {
             this.hasPulledInitialData = true;
             await SyncEngine.firstTimeAutoSync(org.id);
           }
-          return { organizationId: org.id, createdNew: false };
+          return { organizationId: org.id, currency: org.currency || 'USD', createdNew: false };
         }
       }
 
@@ -265,11 +294,12 @@ export class WalletAuthService {
       const firstOrg = userOrgs[0];
       console.log('[WalletAuthService] Using existing org as Personal Wallet fallback:', firstOrg.id);
       await this.setCachedOrgId(firstOrg.id);
+      await this.setCachedCurrency(firstOrg.currency || 'USD');
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
         await SyncEngine.firstTimeAutoSync(firstOrg.id);
       }
-      return { organizationId: firstOrg.id, createdNew: false };
+      return { organizationId: firstOrg.id, currency: firstOrg.currency || 'USD', createdNew: false };
     }
 
     // Step 2: Rule #2 Auto-Create Personal Wallet & Spawn Default 'Cash' Account (Only if user has 0 organizations!)
@@ -321,8 +351,9 @@ export class WalletAuthService {
     }
 
     await this.setCachedOrgId(newOrg.id);
+    await this.setCachedCurrency('USD');
     this.hasPulledInitialData = true;
     await SyncEngine.firstTimeAutoSync(newOrg.id);
-    return { organizationId: newOrg.id, createdNew: true };
+    return { organizationId: newOrg.id, currency: 'USD', createdNew: true };
   }
 }

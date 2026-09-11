@@ -26,6 +26,7 @@ import {
   calculateTotalNetBalance,
   getAccountBadgeText,
 } from '@/lib/utils/balance';
+import { formatCurrency } from '@/lib/utils/currency';
 import { TransactionCard } from '@/components/TransactionCard';
 import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/wallet';
 
@@ -35,6 +36,7 @@ export default function DashboardScreen() {
   const [totalNetBalance, setTotalNetBalance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [currency, setCurrency] = useState('USD');
   const [userId, setUserId] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -175,8 +177,9 @@ export default function DashboardScreen() {
       const session = await WalletAuthService.getSession();
       if (!session?.user) return;
       setUserId(session.user.id);
-      const { organizationId } = await WalletAuthService.resolveUserWallet(session.user.id);
+      const { organizationId, currency: fetchedCurrency } = await WalletAuthService.resolveUserWallet(session.user.id);
       setOrgId(organizationId);
+      setCurrency(fetchedCurrency);
       // init is called once on mount
       await loadLocalData(organizationId, new Date());
     }
@@ -263,7 +266,7 @@ export default function DashboardScreen() {
       <View style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>TOTAL NET BALANCE</Text>
         <Text style={styles.balanceValue}>
-          ${totalNetBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+          {formatCurrency(totalNetBalance, currency)}
         </Text>
         <View style={styles.accountCountPill}>
           <Text style={styles.accountCountText}>
@@ -280,7 +283,7 @@ export default function DashboardScreen() {
             <ArrowUpRight size={18} color={Colors.income} />
           </View>
           <Text style={[styles.statValue, { color: Colors.income }]}>
-            +${monthlyIncome.toFixed(2)}
+            +{formatCurrency(monthlyIncome, currency)}
           </Text>
         </View>
 
@@ -290,7 +293,7 @@ export default function DashboardScreen() {
             <ArrowDownRight size={18} color={Colors.expense} />
           </View>
           <Text style={[styles.statValue, { color: Colors.expense }]}>
-            -${monthlyExpense.toFixed(2)}
+            -{formatCurrency(monthlyExpense, currency)}
           </Text>
         </View>
       </View>
@@ -361,6 +364,7 @@ export default function DashboardScreen() {
             accounts={accounts}
             onEdit={handleEditTransaction}
             onDelete={handleDeleteConfirm}
+            currency={currency}
           />
         )}
       />
@@ -389,6 +393,7 @@ export default function DashboardScreen() {
         userId={userId}
         accounts={accounts}
         initialType={initialModalTxType}
+        currency={currency}
       />
 
       {/* Shared Edit Transaction Modal */}
@@ -405,6 +410,7 @@ export default function DashboardScreen() {
         userId={userId}
         accounts={accounts}
         transaction={selectedTx}
+        currency={currency}
       />
     </View>
   );

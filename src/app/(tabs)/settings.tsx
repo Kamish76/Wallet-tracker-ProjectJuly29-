@@ -37,6 +37,7 @@ export default function SettingsScreen() {
   const [widgetBalance, setWidgetBalance] = useState('$0.00');
   const [updatingWidget, setUpdatingWidget] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [currency, setCurrency] = useState('USD');
   const [categories, setCategories] = useState<WalletCategory[]>([]);
   const [categoriesModalVisible, setCategoriesModalVisible] = useState(false);
 
@@ -54,8 +55,9 @@ export default function SettingsScreen() {
       const session = await WalletAuthService.getSession();
       setUserEmail(session?.user?.email || 'Logged In');
       if (session?.user) {
-        const { organizationId } = await WalletAuthService.resolveUserWallet(session.user.id);
+        const { organizationId, currency: fetchedCurrency } = await WalletAuthService.resolveUserWallet(session.user.id);
         setOrgId(organizationId);
+        setCurrency(fetchedCurrency);
         await loadCategories(organizationId);
       }
       const st = await SyncEngine.getSettings();
@@ -156,8 +158,11 @@ export default function SettingsScreen() {
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>ORGANIZATION ACCOUNT</Text>
         <Text style={styles.profileEmail}>{userEmail}</Text>
-        <Text style={styles.profileSubtext}>
+        <Text style={[styles.profileSubtext, { marginBottom: 4 }]}>
           Unified access with OrgFinance web app (Personal Wallet Mode)
+        </Text>
+        <Text style={[styles.profileSubtext, { color: Colors.primary, fontWeight: '700' }]}>
+          Currency: {currency}
         </Text>
 
         <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
