@@ -203,7 +203,7 @@ export default function SettingsScreen() {
           Unified access with OrgFinance web app (Personal Wallet Mode)
         </Text>
 
-        <View ref={buttonRef} style={{ alignSelf: 'flex-start' }}>
+        <View ref={buttonRef} style={{ alignSelf: 'flex-start' }} collapsable={false}>
           <TouchableOpacity 
             style={styles.currencySelectorButton} 
             onPress={openCurrencyModal}
@@ -519,7 +519,8 @@ export default function SettingsScreen() {
           activeOpacity={1} 
           onPress={() => setCurrencyModalVisible(false)}
         >
-          <View 
+          <TouchableOpacity 
+            activeOpacity={1}
             style={[
               styles.currencyModalCard, 
               { 
@@ -553,7 +554,7 @@ export default function SettingsScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
     </ScrollView>
