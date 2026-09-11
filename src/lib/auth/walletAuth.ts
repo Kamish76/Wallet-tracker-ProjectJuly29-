@@ -1,5 +1,6 @@
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, supabaseAdmin } from '@/lib/supabase/client';
 import { SyncEngine } from '@/lib/sync/syncEngine';
@@ -112,8 +113,28 @@ export class WalletAuthService {
     await RateLimiter.assertAllowed('auth:oauth', RateLimitPolicies.AUTH_OAUTH);
     await this.clearAllUserData();
     await supabase.auth.signOut(); // Clear any stale session
-    const redirectTo = Linking.createURL('auth/oauth');
+    
+    // Web: use auth/callback for direct handling
+    const redirectTo = Linking.createURL(Platform.OS === 'web' ? 'auth/callback' : 'auth/oauth');
     console.log('[WalletAuthService] Google OAuth redirectTo:', redirectTo);
+
+    if (Platform.OS === 'web') {
+      // On web, let Supabase handle the redirect automatically (no skipBrowserRedirect)
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+        },
+      });
+      if (error) {
+        await RateLimiter.recordAttempt('auth:oauth', RateLimitPolicies.AUTH_OAUTH);
+        throw error;
+      }
+      await RateLimiter.reset('auth:oauth');
+      return data;
+    }
+
+    // Native: use manual WebBrowser flow
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
