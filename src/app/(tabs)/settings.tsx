@@ -220,7 +220,7 @@ export default function SettingsScreen() {
           Unified access with OrgFinance web app (Personal Wallet Mode)
         </Text>
 
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <View ref={buttonRef} collapsable={false}>
             <TouchableOpacity 
               style={[styles.currencySelectorButton, { marginBottom: 0 }]} 
