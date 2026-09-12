@@ -473,7 +473,8 @@ export function AddTransactionModal({
               )}
             </TouchableOpacity>
 
-          <View style={[styles.selectorsRow, { gap: 0 }]}>
+          <View style={{ zIndex: 100, position: 'relative' }}>
+            <View style={[styles.selectorsRow, { gap: 0 }]}>
             {/* LEFT SELECTOR: Account (or From Account) */}
             <View style={[styles.selectorCol, leftColStyle]}>
               <Text style={styles.selectorLabel} numberOfLines={1}>
@@ -520,9 +521,8 @@ export function AddTransactionModal({
             </View>
           </View>
 
-          {/* Render Dropdown Lists below so they maintain 100% width and don't distort during transition */}
+          {/* Floating Dropdown Lists */}
           {showAccountDropdown === 'from' && (
-            <View>
               <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
                 {accounts.map((a) => (
                   <TouchableOpacity
@@ -542,11 +542,9 @@ export function AddTransactionModal({
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-            </View>
           )}
 
           {showAccountDropdown === 'to' && txType === 'transfer' && (
-            <View>
               <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
                 {accounts.filter(a => a.id !== accountId).map((a) => (
                   <TouchableOpacity
@@ -566,11 +564,9 @@ export function AddTransactionModal({
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-            </View>
           )}
 
           {showCategoryDropdown && (
-            <View>
               <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
                 {filteredCategories.map((cat) => (
                   <TouchableOpacity
@@ -597,8 +593,8 @@ export function AddTransactionModal({
                   <Text style={styles.dropdownItemAddText}>+ Custom</Text>
                 </TouchableOpacity>
               </ScrollView>
-            </View>
           )}
+          </View>
 
           {showCustomCatInput && txType !== 'transfer' && (
             <View style={[styles.customCategoryRow, { marginTop: 12 }]}>
@@ -791,6 +787,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary + '15',
   },
   dropdownList: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
     backgroundColor: Colors.surface,
     borderRadius: Tokens.radius.md,
     borderWidth: 1,
@@ -798,6 +798,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
     maxHeight: 250,
     overflow: 'hidden',
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   dropdownItem: {
     paddingHorizontal: 12,
