@@ -2,17 +2,14 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
-  Modal,
-  TextInput,
   Alert,
   StyleSheet,
   RefreshControl,
   FlatList,
   ActivityIndicator,
 } from 'react-native';
-import { Plus, X, Filter, RefreshCw, Edit2, Trash2 } from 'lucide-react-native';
+import { Plus, RefreshCw } from 'lucide-react-native';
 import { useFocusEffect } from 'expo-router';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
@@ -22,9 +19,7 @@ import { EditTransactionModal } from '@/components/EditTransactionModal';
 import { WidgetService } from '@/lib/widget/widgetService';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
-import { getAccountBadgeText } from '@/lib/utils/balance';
 import { TransactionCard } from '@/components/TransactionCard';
-import { generateUUID } from '@/lib/utils/uuid';
 import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/wallet';
 
 export default function TransactionsScreen() {
@@ -36,6 +31,7 @@ export default function TransactionsScreen() {
   const [selectedTx, setSelectedTx] = useState<WalletTransaction | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [currency, setCurrency] = useState('USD');
   const [refreshing, setRefreshing] = useState(false);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -112,8 +108,9 @@ export default function TransactionsScreen() {
       const session = await WalletAuthService.getSession();
       if (!session?.user) return;
       setUserId(session.user.id);
-      const { organizationId } = await WalletAuthService.resolveUserWallet(session.user.id);
+      const { organizationId, currency: fetchedCurrency } = await WalletAuthService.resolveUserWallet(session.user.id);
       setOrgId(organizationId);
+      setCurrency(fetchedCurrency);
       await loadLocalData(organizationId);
     }
     init();
@@ -225,6 +222,7 @@ export default function TransactionsScreen() {
             accounts={accounts}
             onEdit={handleEditTransaction}
             onDelete={handleDeleteConfirm}
+            currency={currency}
           />
         )}
       />
@@ -250,6 +248,7 @@ export default function TransactionsScreen() {
         orgId={orgId}
         userId={userId}
         accounts={accounts}
+        currency={currency}
       />
 
       {/* Shared Edit Transaction Modal */}
@@ -266,6 +265,7 @@ export default function TransactionsScreen() {
         userId={userId}
         accounts={accounts}
         transaction={selectedTx}
+        currency={currency}
       />
     </View>
   );
@@ -331,48 +331,6 @@ const styles = StyleSheet.create({
     ...Tokens.typography.body,
     color: Colors.textMuted,
   },
-  txCard: {
-    ...Tokens.card,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Tokens.spacing.sm,
-    paddingVertical: 14,
-  },
-  txLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  txTypeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: Tokens.spacing.md,
-  },
-  txCategory: {
-    ...Tokens.typography.body,
-    fontWeight: '600',
-  },
-  txDate: {
-    ...Tokens.typography.caption,
-    color: Colors.textDim,
-  },
-  txAmount: {
-    ...Tokens.typography.h3,
-    fontWeight: '700',
-  },
-  txRight: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  txActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  actionBtn: {
-    padding: 4,
-  },
   fabButton: {
     position: 'absolute',
     right: 20,
@@ -397,108 +355,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.background,
     marginLeft: 8,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: Colors.overlay,
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: Tokens.radius.xl,
-    borderTopRightRadius: Tokens.radius.xl,
-    padding: Tokens.spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.borderGlow,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Tokens.spacing.lg,
-  },
-  modalTitle: {
-    ...Tokens.typography.h2,
-  },
-  typeSelectorRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: Tokens.spacing.md,
-  },
-  typeBtn: {
-    flex: 0.32,
-    paddingVertical: 10,
-    alignItems: 'center',
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Tokens.radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  typeBtnActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  typeBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textLight,
-  },
-  typeBtnTextActive: {
-    color: Colors.background,
-  },
-  inputLabel: {
-    ...Tokens.typography.caption,
-    color: Colors.textLight,
-    marginBottom: 6,
-    marginTop: 10,
-  },
-  input: {
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Tokens.radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    color: Colors.textWhite,
-    paddingHorizontal: Tokens.spacing.md,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  accountPickerRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 4,
-  },
-  accPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: Tokens.radius.full,
-    backgroundColor: Colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  accPillActive: {
-    backgroundColor: Colors.secondary,
-    borderColor: Colors.secondary,
-  },
-  accPillText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.textLight,
-  },
-  accPillTextActive: {
-    color: Colors.background,
-  },
-  saveButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: Tokens.radius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: Tokens.spacing.lg,
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.background,
   },
 });

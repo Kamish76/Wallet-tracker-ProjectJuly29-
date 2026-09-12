@@ -4,6 +4,7 @@ import { Edit2, Trash2 } from 'lucide-react-native';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import { getAccountBadgeText } from '@/lib/utils/balance';
+import { formatCurrency } from '@/lib/utils/currency';
 import type { WalletTransaction, WalletAccount } from '@/types/wallet';
 
 interface TransactionCardProps {
@@ -11,10 +12,11 @@ interface TransactionCardProps {
   accounts: WalletAccount[];
   onEdit: (tx: WalletTransaction) => void;
   onDelete: (tx: WalletTransaction) => void;
+  currency?: string;
 }
 
 export const TransactionCard = memo(
-  ({ tx, accounts, onEdit, onDelete }: TransactionCardProps) => {
+  ({ tx, accounts, onEdit, onDelete, currency = 'USD' }: TransactionCardProps) => {
     return (
       <TouchableOpacity
         style={styles.txCard}
@@ -63,7 +65,7 @@ export const TransactionCard = memo(
               },
             ]}
           >
-            {tx.type === 'income' ? '+' : '-'}${Number(tx.amount).toFixed(2)}
+            {tx.type === 'income' ? '+' : '-'}{formatCurrency(Number(tx.amount), currency)}
           </Text>
           <View style={styles.txActions}>
             <TouchableOpacity
@@ -101,7 +103,8 @@ export const TransactionCard = memo(
       prevProps.tx.occurred_at === nextProps.tx.occurred_at &&
       prevProps.tx.sync_status === nextProps.tx.sync_status &&
       prevProps.tx.type === nextProps.tx.type &&
-      prevProps.accounts === nextProps.accounts
+      prevProps.accounts === nextProps.accounts &&
+      prevProps.currency === nextProps.currency
     );
   }
 );

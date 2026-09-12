@@ -9,15 +9,21 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native';
-import { X, Plus, Delete, AlertCircle } from 'lucide-react-native';
+import Animated, { SlideInDown, SlideOutDown, LinearTransition, FadeIn, FadeOut, useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated';
+import { X, Plus, Delete, AlertCircle, ChevronDown } from 'lucide-react-native';
 
 // Safely evaluates arithmetic expressions without eval()
 function evaluateMathExpression(expr: string): number {
   try {
-    const clean = expr
+    let clean = expr
       .replace(/×/g, '*')
       .replace(/÷/g, '/')
       .replace(/[^0-9+\-*/.]/g, '');
+
+    // Allow leading negative sign
+    if (clean.startsWith('-')) {
+      clean = '0' + clean;
+    }
 
     if (!clean || /^[^0-9(]/.test(clean)) return 0;
 
@@ -83,6 +89,8 @@ import { generateUUID } from '@/lib/utils/uuid';
 import { WidgetService } from '@/lib/widget/widgetService';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
+import { calculateAccountBalance } from '@/lib/utils/balance';
+import { formatCurrency } from '@/lib/utils/currency';
 import type { WalletAccount, WalletTransaction, TransactionType, WalletCategory } from '@/types/wallet';
 
 interface AddTransactionModalProps {
@@ -93,6 +101,7 @@ interface AddTransactionModalProps {
   userId: string | null;
   accounts: WalletAccount[];
   initialType?: TransactionType;
+  currency?: string;
 }
 
 export function AddTransactionModal({
@@ -103,6 +112,7 @@ export function AddTransactionModal({
   userId,
   accounts,
   initialType,
+  currency = 'USD',
 }: AddTransactionModalProps) {
   const [txType, setTxType] = useState<TransactionType>('expense_personal');
   const [displayExpr, setDisplayExpr] = useState('0');
@@ -115,6 +125,77 @@ export function AddTransactionModal({
   const [showCustomCatInput, setShowCustomCatInput] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const [customCatName, setCustomCatName] = useState('');
+  const [accountBalances, setAccountBalances] = useState<Record<string, number>>({});
+  const [showAccountDropdown, setShowAccountDropdown] = useState<'from' | 'to' | null>(null);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [modalHeight, setModalHeight] = useState<number | null>(null);
+  const [isAnimationReady, setIsAnimationReady] = useState(false);
+  const [internalVisible, setInternalVisible] = useState(visible);
+
+  useEffect(() => {
+    if (visible) {
+      setInternalVisible(true);
+    } else {
+      const t = setTimeout(() => setInternalVisible(false), 300);
+      return () => clearTimeout(t);
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (visible) {
+      const timer = setTimeout(() => setIsAnimationReady(true), 350);
+      return () => clearTimeout(timer);
+    } else {
+      setIsAnimationReady(false);
+    }
+  }, [visible]);
+
+  const leftFlex = useDerivedValue(() => {
+    if (showAccountDropdown) return withSpring(100, { damping: 80, stiffness: 800 });
+    if (showCategoryDropdown) return withSpring(0, { damping: 80, stiffness: 800 });
+    return withSpring(50, { damping: 80, stiffness: 800 });
+  });
+
+  const rightFlex = useDerivedValue(() => {
+    if (showCategoryDropdown) return withSpring(100, { damping: 80, stiffness: 800 });
+    if (showAccountDropdown) return withSpring(0, { damping: 80, stiffness: 800 });
+    return withSpring(50, { damping: 80, stiffness: 800 });
+  });
+
+  const marginAnim = useDerivedValue(() => {
+    if (showAccountDropdown || showCategoryDropdown) return withSpring(0, { damping: 80, stiffness: 800 });
+    return withSpring(12, { damping: 80, stiffness: 800 }); // base gap
+  });
+
+  const leftStyle = useAnimatedStyle(() => ({
+    flex: leftFlex.value,
+    flexBasis: 0,
+    minWidth: 0,
+    opacity: leftFlex.value < 1 ? 0 : 1,
+    marginRight: marginAnim.value / 2,
+    overflow: 'hidden',
+  }));
+
+  const rightStyle = useAnimatedStyle(() => ({
+    flex: rightFlex.value,
+    flexBasis: 0,
+    minWidth: 0,
+    opacity: rightFlex.value < 1 ? 0 : 1,
+    marginLeft: marginAnim.value / 2,
+    overflow: 'hidden',
+  }));
+
+  const toggleAccountDropdown = (type: 'from' | 'to' | null) => {
+    const nextState = showAccountDropdown === type ? null : type;
+    setShowAccountDropdown(nextState);
+    if (nextState) setShowCategoryDropdown(false);
+  };
+
+  const toggleCategoryDropdown = () => {
+    const nextState = !showCategoryDropdown;
+    setShowCategoryDropdown(nextState);
+    if (nextState) setShowAccountDropdown(null);
+  };
 
   const evaluatedAmount = useMemo(() => {
     return evaluateMathExpression(displayExpr);
@@ -134,8 +215,14 @@ export function AddTransactionModal({
       }
       return;
     }
-    if (displayExpr === '0' && '0123456789'.includes(key)) {
-      setDisplayExpr(key);
+    if (displayExpr === '0') {
+      if ('0123456789'.includes(key)) {
+        setDisplayExpr(key);
+      } else if (key === '-') {
+        setDisplayExpr('-');
+      } else {
+        setDisplayExpr('0' + key);
+      }
     } else {
       const lastChar = displayExpr.slice(-1);
       const isOp = '+-×÷.'.includes(key);
@@ -150,6 +237,9 @@ export function AddTransactionModal({
 
   useEffect(() => {
     if (visible && orgId) {
+      setModalHeight(null);
+      setShowAccountDropdown(null);
+      setShowCategoryDropdown(false);
       if (initialType) {
         setTxType(initialType);
       }
@@ -157,9 +247,18 @@ export function AddTransactionModal({
         setAccountId(accounts[0].id);
       }
       OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
+      OfflineDatabase.getTransactions(orgId, 10000, 0).then((allTxs) => {
+        const balances: Record<string, number> = {};
+        for (const acc of accounts) {
+          balances[acc.id] = calculateAccountBalance(acc, allTxs).current_balance;
+        }
+        setAccountBalances(balances);
+      }).catch(() => {});
     } else {
       setShowCustomCatInput(false);
       setCustomCatName('');
+      setShowAccountDropdown(null);
+      setShowCategoryDropdown(false);
     }
   }, [visible, accounts, accountId, initialType, orgId]);
 
@@ -288,9 +387,19 @@ export function AddTransactionModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
+    <Modal visible={internalVisible} animationType="none" transparent>
+      {visible && (
+      <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(200)} style={styles.modalOverlay}>
+        <Animated.View 
+          entering={SlideInDown.springify().damping(40).stiffness(500)}
+          exiting={SlideOutDown.duration(200)}
+          style={[styles.modalCard, modalHeight ? { height: modalHeight } : { maxHeight: '95%' }]}
+          onLayout={(e) => {
+            if (!modalHeight) {
+              setModalHeight(e.nativeEvent.layout.height);
+            }
+          }}
+        >
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Add Transaction</Text>
             <TouchableOpacity
@@ -369,7 +478,7 @@ export function AddTransactionModal({
                     {displayExpr}
                   </Text>
                   {displayExpr.match(/[+\-×÷]/) && (
-                    <Text style={styles.evalText}>= ${evaluatedAmount.toFixed(2)}</Text>
+                    <Text style={styles.evalText}>= {formatCurrency(evaluatedAmount, currency)}</Text>
                   )}
                 </View>
                 <TouchableOpacity onPress={() => handleKeypadPress('BACKSPACE')} style={styles.backspaceBtn}>
@@ -384,126 +493,158 @@ export function AddTransactionModal({
               )}
             </TouchableOpacity>
 
-          <Text style={styles.inputLabel}>Sub-Account</Text>
-          <View style={styles.accountPickerRow}>
-            {accounts.length === 0 ? (
-              <Text style={{ color: Colors.textMuted, fontStyle: 'italic' }}>
-                No sub-accounts found. Create one in the Accounts tab!
+          <View style={[styles.selectorsRow, { gap: 0 }]}>
+            {/* LEFT SELECTOR: Account (or From Account) */}
+            <Animated.View style={[styles.selectorCol, leftStyle]}>
+              <Text style={styles.selectorLabel} numberOfLines={1}>
+                {txType === 'transfer' ? 'From' : 'Account'}
               </Text>
-            ) : (
-              accounts.map((a) => (
+              <TouchableOpacity
+                style={[styles.selectorButton, !!showAccountDropdown && styles.selectorButtonActive]}
+                onPress={() => toggleAccountDropdown('from')}
+              >
+                <Text style={styles.selectorButtonText} numberOfLines={1}>
+                  {accounts.find(a => a.id === accountId)?.name || 'Select Account'}
+                </Text>
+                <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
+              </TouchableOpacity>
+            </Animated.View>
+
+            {/* RIGHT SELECTOR: Category OR To Account */}
+            <Animated.View style={[styles.selectorCol, rightStyle]}>
+              <Text style={styles.selectorLabel} numberOfLines={1}>
+                {txType === 'transfer' ? 'To' : 'Category'}
+              </Text>
+
+              {txType === 'transfer' ? (
                 <TouchableOpacity
-                  key={a.id}
-                  style={[
-                    styles.accPill,
-                    accountId === a.id && styles.accPillActive,
-                  ]}
-                  onPress={() => setAccountId(a.id)}
+                  style={[styles.selectorButton, !!showAccountDropdown && styles.selectorButtonActive]}
+                  onPress={() => toggleAccountDropdown('to')}
                 >
-                  <Text
-                    style={[
-                      styles.accPillText,
-                      accountId === a.id && styles.accPillTextActive,
-                    ]}
-                  >
-                    {a.name}
+                  <Text style={styles.selectorButtonText} numberOfLines={1}>
+                    {accounts.find(a => a.id === transferToId)?.name || 'Select Account'}
                   </Text>
+                  <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
                 </TouchableOpacity>
-              ))
-            )}
+              ) : (
+                <TouchableOpacity
+                  style={[styles.selectorButton, showCategoryDropdown && styles.selectorButtonActive]}
+                  onPress={() => toggleCategoryDropdown()}
+                >
+                  <Text style={styles.selectorButtonText} numberOfLines={1}>
+                    {category || 'Select Category'}
+                  </Text>
+                  <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
+                </TouchableOpacity>
+              )}
+            </Animated.View>
           </View>
 
-          {txType === 'transfer' && (
-            <>
-              <Text style={styles.inputLabel}>Transfer To</Text>
-              <View style={styles.accountPickerRow}>
-                {accounts
-                  .filter((a) => a.id !== accountId)
-                  .map((a) => (
-                    <TouchableOpacity
-                      key={a.id}
-                      style={[
-                        styles.accPill,
-                        transferToId === a.id && styles.accPillActive,
-                      ]}
-                      onPress={() => setTransferToId(a.id)}
-                    >
-                      <Text
-                        style={[
-                          styles.accPillText,
-                          transferToId === a.id && styles.accPillTextActive,
-                        ]}
-                      >
-                        {a.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-              </View>
-            </>
+          {/* Render Dropdown Lists below so they maintain 100% width and don't distort during transition */}
+          {showAccountDropdown === 'from' && (
+            <Animated.View layout={LinearTransition.springify().damping(50).stiffness(350)} entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)}>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+                {accounts.map((a) => (
+                  <TouchableOpacity
+                    key={a.id}
+                    style={[styles.dropdownItem, accountId === a.id && styles.dropdownItemActive]}
+                    onPress={() => {
+                      setAccountId(a.id);
+                      toggleAccountDropdown(null);
+                    }}
+                  >
+                    <Text style={[styles.dropdownItemText, accountId === a.id && styles.dropdownItemTextActive]}>
+                      {a.name}
+                    </Text>
+                    <Text style={styles.dropdownItemSubText}>
+                      {formatCurrency(accountBalances[a.id] || 0, currency)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </Animated.View>
           )}
 
-          {txType !== 'transfer' && (
-            <>
-              <Text style={styles.inputLabel}>Category</Text>
-              <View style={styles.categoryPillsContainer}>
-                {filteredCategories.map((cat) => {
-                  const isSelected = category === cat.display_name;
-                  return (
-                    <TouchableOpacity
-                      key={cat.id}
-                      style={[
-                        styles.categoryPill,
-                        isSelected && styles.categoryPillSelected,
-                      ]}
-                      onPress={() => setCategory(cat.display_name)}
-                    >
-                      <Text
-                        style={[
-                          styles.categoryPillText,
-                          isSelected && styles.categoryPillTextSelected,
-                        ]}
-                      >
-                        {cat.display_name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+          {showAccountDropdown === 'to' && txType === 'transfer' && (
+            <Animated.View layout={LinearTransition.springify().damping(50).stiffness(350)} entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)}>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+                {accounts.filter(a => a.id !== accountId).map((a) => (
+                  <TouchableOpacity
+                    key={a.id}
+                    style={[styles.dropdownItem, transferToId === a.id && styles.dropdownItemActive]}
+                    onPress={() => {
+                      setTransferToId(a.id);
+                      toggleAccountDropdown(null);
+                    }}
+                  >
+                    <Text style={[styles.dropdownItemText, transferToId === a.id && styles.dropdownItemTextActive]}>
+                      {a.name}
+                    </Text>
+                    <Text style={styles.dropdownItemSubText}>
+                      {formatCurrency(accountBalances[a.id] || 0, currency)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </Animated.View>
+          )}
 
+          {showCategoryDropdown && (
+            <Animated.View layout={LinearTransition.springify().damping(50).stiffness(350)} entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)}>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+                {filteredCategories.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[styles.dropdownItem, category === cat.display_name && styles.dropdownItemActive]}
+                    onPress={() => {
+                      setCategory(cat.display_name);
+                      toggleCategoryDropdown();
+                    }}
+                  >
+                    <Text style={[styles.dropdownItemText, category === cat.display_name && styles.dropdownItemTextActive]}>
+                      {cat.display_name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
                 <TouchableOpacity
-                  style={styles.addCategoryPill}
-                  onPress={() => setShowCustomCatInput(!showCustomCatInput)}
+                  style={styles.dropdownItemAdd}
+                  onPress={() => {
+                    setShowCustomCatInput(!showCustomCatInput);
+                    toggleCategoryDropdown();
+                  }}
                 >
                   <Plus size={14} color={Colors.primary} />
-                  <Text style={styles.addCategoryPillText}>+ Custom</Text>
+                  <Text style={styles.dropdownItemAddText}>+ Custom</Text>
                 </TouchableOpacity>
-              </View>
-
-              {showCustomCatInput && (
-                <View style={styles.customCategoryRow}>
-                  <TextInput
-                    style={styles.customCategoryInput}
-                    placeholder="Enter custom category name..."
-                    placeholderTextColor={Colors.textDim}
-                    value={customCatName}
-                    onChangeText={setCustomCatName}
-                    maxLength={60}
-                  />
-                  <TouchableOpacity
-                    style={[
-                      styles.customCategoryAddBtn,
-                      !customCatName.trim() && { opacity: 0.4 },
-                    ]}
-                    onPress={handleCreateCustomCategory}
-                    disabled={!customCatName.trim()}
-                  >
-                    <Text style={styles.customCategoryAddBtnText}>Add</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </>
+              </ScrollView>
+            </Animated.View>
           )}
 
-          <Text style={styles.inputLabel}>Notes (Optional)</Text>
+          {showCustomCatInput && txType !== 'transfer' && (
+            <Animated.View layout={LinearTransition.springify().damping(50).stiffness(350)} style={[styles.customCategoryRow, { marginTop: 12 }]}>
+              <TextInput
+                style={styles.customCategoryInput}
+                placeholder="Enter custom category name..."
+                placeholderTextColor={Colors.textDim}
+                value={customCatName}
+                onChangeText={setCustomCatName}
+                maxLength={60}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.customCategoryAddBtn,
+                  !customCatName.trim() && { opacity: 0.4 },
+                ]}
+                onPress={handleCreateCustomCategory}
+                disabled={!customCatName.trim()}
+              >
+                <Text style={styles.customCategoryAddBtnText}>Add</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
+          <Animated.View layout={isAnimationReady ? LinearTransition.springify().damping(50).stiffness(350) : undefined}>
+            <Text style={styles.inputLabel}>Notes (Optional)</Text>
           <TextInput
             style={styles.input}
             placeholder="Optional notes..."
@@ -521,10 +662,9 @@ export function AddTransactionModal({
               {saving ? 'Saving...' : 'Save Transaction'}
             </Text>
           </TouchableOpacity>
-        </ScrollView>
 
           {/* Keypad */}
-          <View style={styles.keypad}>
+          <View style={[styles.keypad, { marginTop: 24, minHeight: 260 }]}>
             {[
               ['+', '7', '8', '9'],
               ['-', '4', '5', '6'],
@@ -554,8 +694,11 @@ export function AddTransactionModal({
               </View>
             ))}
           </View>
-        </View>
-      </View>
+          </Animated.View>
+        </ScrollView>
+        </Animated.View>
+      </Animated.View>
+      )}
     </Modal>
   );
 }
@@ -627,6 +770,91 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginTop: 4,
+  },
+  selectorsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+    zIndex: 10,
+  },
+  selectorCol: {
+    flex: 1,
+    position: 'relative',
+  },
+  selectorLabel: {
+    ...Tokens.typography.caption,
+    color: Colors.textLight,
+    marginBottom: 6,
+    textAlign: 'center',
+    height: 18,
+  },
+  selectorButton: {
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Tokens.radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 48,
+  },
+  selectorButtonText: {
+    fontSize: 14,
+    color: Colors.textWhite,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  selectorButtonActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '15',
+  },
+  dropdownList: {
+    backgroundColor: Colors.surface,
+    borderRadius: Tokens.radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginTop: 4,
+    maxHeight: 250,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceElevated,
+  },
+  dropdownItemActive: {
+    backgroundColor: Colors.secondary + '20',
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    color: Colors.textLight,
+  },
+  dropdownItemTextActive: {
+    color: Colors.secondary,
+    fontWeight: '600',
+  },
+  dropdownItemSubText: {
+    fontSize: 12,
+    color: Colors.textDim,
+  },
+  dropdownItemAdd: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dropdownItemAddText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '600',
   },
   accPill: {
     paddingHorizontal: 14,

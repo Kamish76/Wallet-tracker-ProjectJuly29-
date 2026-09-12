@@ -5,6 +5,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.4.3] - Web Support and Dynamic Currency (2026-09-12)
+
+### 🚀 New Features & Enhancements
+- **Web Platform Support:** Added extensive web compatibility using `react-native-web`, complete with Metro WASM configuration and platform-specific OAuth session handling.
+- **Dynamic Currency System:** Introduced dynamic currency support across all mobile UI components and settings, including offline sync and auto-reload for currency updates.
+- **Transaction Modal Upgrades:** Replaced native modal slide animations with custom, smooth `Reanimated` spring physics. Account and category selection pills have been upgraded to dynamic dropdown menus with smooth layout animations. Account balances are now conveniently displayed directly within the Add and Edit transaction modals. Enabled negative number input support in the transaction amount calculator.
+- **Network Tracking:** Integrated `netinfo` for real-time tracking of network connectivity status.
+- **Settings Updates:** Added a direct link to the web experience within the About section.
+
+### 🛠 Fixes & Refactoring
+- **Responsive UI:** Adjusted the bottom tab bar height to properly respect safe area insets.
+- **Currency Dropdown Fixes:** Addressed touch, layout, and positioning issues for the currency modal dropdown, including web compatibility fixes.
+- **Background Sync:** Enhanced error handling for background synchronization.
+- **Auth Enhancements:** Improved session detection and URL parsing in the authentication callback.
+- **Cleanup:** Removed legacy modal components and updated project dependencies.
+
+---
 ## [0.4.2] - Widget and UI Adjustments (2026-08-21)
 
 ### 🌟 New Features & UI Enhancements

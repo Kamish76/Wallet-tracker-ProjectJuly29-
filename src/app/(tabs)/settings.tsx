@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,13 @@ import {
   Alert,
   StyleSheet,
   Image,
+  Linking,
+  Modal,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
-import { RefreshCw, LogOut, Check, Wifi, Database, ShieldAlert, Tag } from 'lucide-react-native';
+import { RefreshCw, LogOut, Check, Wifi, Database, ShieldAlert, Tag, ChevronDown } from 'lucide-react-native';
+import { supabase } from '@/lib/supabase/client';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { OfflineDatabase } from '@/lib/database/sqlite';
@@ -36,8 +40,15 @@ export default function SettingsScreen() {
   const [widgetBalance, setWidgetBalance] = useState('$0.00');
   const [updatingWidget, setUpdatingWidget] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [currency, setCurrency] = useState('USD');
   const [categories, setCategories] = useState<WalletCategory[]>([]);
   const [categoriesModalVisible, setCategoriesModalVisible] = useState(false);
+  const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
+  const [updatingCurrency, setUpdatingCurrency] = useState(false);
+  const [dropdownLayout, setDropdownLayout] = useState({ top: 0, left: 0, width: 0 });
+  const buttonRef = useRef<View>(null);
+
+  const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'PHP'];
 
   const loadCategories = async (organizationId: string) => {
     try {
@@ -53,8 +64,9 @@ export default function SettingsScreen() {
       const session = await WalletAuthService.getSession();
       setUserEmail(session?.user?.email || 'Logged In');
       if (session?.user) {
-        const { organizationId } = await WalletAuthService.resolveUserWallet(session.user.id);
+        const { organizationId, currency: fetchedCurrency } = await WalletAuthService.resolveUserWallet(session.user.id);
         setOrgId(organizationId);
+        setCurrency(fetchedCurrency);
         await loadCategories(organizationId);
       }
       const st = await SyncEngine.getSettings();
@@ -139,6 +151,55 @@ export default function SettingsScreen() {
     setUpdatingWidget(false);
   };
 
+  const handleUpdateCurrency = async (newCurrency: string) => {
+    if (!orgId) return;
+    setUpdatingCurrency(true);
+    try {
+      await OfflineDatabase.enqueueMutation('UPDATE_ORGANIZATION', {
+        id: orgId,
+        currency: newCurrency
+      });
+
+      await WalletAuthService.updateCachedCurrency(newCurrency);
+      setCurrency(newCurrency);
+      setCurrencyModalVisible(false);
+      
+      WidgetService.refreshWidgetData(orgId).catch(() => {});
+      SyncEngine.syncNow().catch(() => {});
+
+      // Force an app reload so other tabs fetch the new currency immediately
+      router.replace('/');
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to update currency.');
+    } finally {
+      setUpdatingCurrency(false);
+    }
+  };
+
+  const openCurrencyModal = () => {
+    if (Platform.OS === 'web') {
+      const node = buttonRef.current as any;
+      if (node && typeof node.getBoundingClientRect === 'function') {
+        const rect = node.getBoundingClientRect();
+        setDropdownLayout({
+          top: rect.top + rect.height + 8,
+          left: rect.left,
+          width: Math.max(rect.width, 160),
+        });
+        setCurrencyModalVisible(true);
+      }
+    } else {
+      buttonRef.current?.measure((x, y, width, height, pageX, pageY) => {
+        setDropdownLayout({
+          top: pageY + height + 8,
+          left: pageX,
+          width: Math.max(width, 160),
+        });
+        setCurrencyModalVisible(true);
+      });
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Header */}
@@ -155,14 +216,27 @@ export default function SettingsScreen() {
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>ORGANIZATION ACCOUNT</Text>
         <Text style={styles.profileEmail}>{userEmail}</Text>
-        <Text style={styles.profileSubtext}>
+        <Text style={[styles.profileSubtext, { marginBottom: Tokens.spacing.md }]}>
           Unified access with OrgFinance web app (Personal Wallet Mode)
         </Text>
 
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-          <LogOut size={16} color={Colors.expense} />
-          <Text style={styles.signOutButtonText}>Sign Out</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <View ref={buttonRef} collapsable={false}>
+            <TouchableOpacity 
+              style={[styles.currencySelectorButton, { marginBottom: 0 }]} 
+              onPress={openCurrencyModal}
+            >
+              <Text style={styles.currencySelectorLabel}>Currency:</Text>
+              <Text style={styles.currencySelectorValue}>{currency}</Text>
+              <ChevronDown size={16} color={Colors.textLight} />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={[styles.signOutButton, { alignSelf: 'auto' }]} onPress={handleSignOut}>
+            <LogOut size={16} color={Colors.expense} />
+            <Text style={styles.signOutButtonText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Offline & Sync Settings Section */}
@@ -433,10 +507,21 @@ export default function SettingsScreen() {
 
       {/* About Section */}
       <View style={styles.aboutCard}>
-        <Text style={styles.aboutTitle}>OrgWallet v0.4.2</Text>
+        <Text style={styles.aboutTitle}>OrgWallet v0.4.3</Text>
         <Text style={styles.aboutText}>
           Android-optimized mobile app for OrgFinance Personal Wallet tracking. Built with Expo React Native, Supabase, and SQLite offline synchronization.
         </Text>
+        <TouchableOpacity 
+          style={{ marginTop: 16 }}
+          onPress={() => Linking.openURL('https://org-finance.vercel.app/')}
+        >
+          <Text style={[styles.aboutText, { color: Colors.primary, fontWeight: '600' }]}>
+            🌐 Explore the full Web Experience
+          </Text>
+          <Text style={[styles.aboutText, { fontSize: 13, opacity: 0.7, marginTop: 4 }]}>
+            org-finance.vercel.app
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ManageCategoriesModal
@@ -445,6 +530,52 @@ export default function SettingsScreen() {
         orgId={orgId}
         onCategoriesChanged={() => orgId && loadCategories(orgId)}
       />
+
+      {/* Currency Selector Dropdown Modal */}
+      <Modal visible={currencyModalVisible} transparent animationType="fade">
+        <TouchableOpacity 
+          style={StyleSheet.absoluteFill} 
+          activeOpacity={1} 
+          onPress={() => setCurrencyModalVisible(false)}
+        >
+          <TouchableOpacity 
+            activeOpacity={1}
+            style={[
+              styles.currencyModalCard, 
+              { 
+                position: 'absolute', 
+                top: dropdownLayout.top, 
+                left: dropdownLayout.left, 
+                minWidth: dropdownLayout.width 
+              }
+            ]}
+          >
+            <View style={styles.currencyList}>
+              {SUPPORTED_CURRENCIES.map((cur) => (
+                <TouchableOpacity
+                  key={cur}
+                  style={[
+                    styles.currencyItem,
+                    currency === cur && styles.currencyItemActive,
+                  ]}
+                  disabled={updatingCurrency}
+                  onPress={() => handleUpdateCurrency(cur)}
+                >
+                  <Text
+                    style={[
+                      styles.currencyItemText,
+                      currency === cur && styles.currencyItemTextActive,
+                    ]}
+                  >
+                    {cur}
+                  </Text>
+                  {currency === cur && <Check size={16} color={Colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </ScrollView>
   );
 }
@@ -507,6 +638,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: Colors.expense,
     marginLeft: 8,
+  },
+  currencySelectorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceElevated,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: Tokens.radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Tokens.spacing.lg,
+    alignSelf: 'flex-start',
+  },
+  currencySelectorLabel: {
+    ...Tokens.typography.caption,
+    color: Colors.textMuted,
+    marginRight: 8,
+  },
+  currencySelectorValue: {
+    ...Tokens.typography.body,
+    fontWeight: '700',
+    color: Colors.primary,
+    marginRight: 8,
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -716,6 +870,40 @@ const styles = StyleSheet.create({
     ...Tokens.typography.body,
     color: Colors.background,
     fontWeight: '700',
+  },
+  currencyModalCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Tokens.radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    padding: Tokens.spacing.xs,
+  },
+  currencyList: {
+    paddingVertical: Tokens.spacing.xs,
+  },
+  currencyItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: Tokens.spacing.md,
+    borderRadius: Tokens.radius.sm,
+  },
+  currencyItemActive: {
+    backgroundColor: Colors.primaryDark,
+  },
+  currencyItemText: {
+    fontSize: 15,
+    color: Colors.textWhite,
+  },
+  currencyItemTextActive: {
+    fontWeight: '700',
+    color: Colors.background,
   },
 });
 

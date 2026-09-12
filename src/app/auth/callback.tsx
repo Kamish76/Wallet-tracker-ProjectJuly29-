@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Linking from 'expo-linking';
 import { supabase } from '@/lib/supabase/client';
@@ -27,9 +27,12 @@ export default function AuthCallbackScreen() {
 
         // 2. If not active, inspect initial URL or Linking URL
         if (!session) {
-          const url = await Linking.getInitialURL();
+          const url = Platform.OS === 'web' ? window.location.href : await Linking.getInitialURL();
           if (url) {
-            const { accessToken, refreshToken } = extractTokensFromUrl(url);
+            const { accessToken, refreshToken, error: urlError, errorDescription } = extractTokensFromUrl(url);
+            if (urlError || errorDescription) {
+              throw new Error(errorDescription || urlError || 'Authentication failed');
+            }
             if (accessToken && refreshToken) {
               const { data, error } = await supabase.auth.setSession({
                 access_token: accessToken,

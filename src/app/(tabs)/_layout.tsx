@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialTopTabs } from '@/components/MaterialTopTabs';
 import { View, Text, StyleSheet } from 'react-native';
 import { LayoutDashboard, ArrowRightLeft, Wallet, Settings, Wifi, WifiOff, RefreshCw } from 'lucide-react-native';
 import { SyncEngine } from '@/lib/sync/syncEngine';
@@ -10,6 +11,10 @@ export default function TabsLayout() {
   const [pendingCount, setPendingCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+
+  const insets = useSafeAreaInsets();
+  const paddingBottom = Math.max(14, insets.bottom);
+  const tabBarHeight = 68 + paddingBottom; // base content height (72 - 14 = 58)
 
   useEffect(() => {
     const unsubscribe = SyncEngine.subscribe((count, syncing) => {
@@ -44,44 +49,48 @@ export default function TabsLayout() {
         </View>
       </View>
 
-      <Tabs
+      <MaterialTopTabs
+        tabBarPosition="bottom"
         screenOptions={{
-          headerShown: false,
-          tabBarStyle: styles.tabBar,
+          tabBarStyle: [styles.tabBar, { height: tabBarHeight, paddingBottom }],
           tabBarActiveTintColor: Colors.primary,
           tabBarInactiveTintColor: Colors.textDim,
           tabBarLabelStyle: styles.tabLabel,
+          tabBarShowIcon: true,
+          tabBarIndicatorStyle: { backgroundColor: 'transparent' }, // hide top indicator line
+          swipeEnabled: true,
+          animationEnabled: true,
         }}
       >
-        <Tabs.Screen
+        <MaterialTopTabs.Screen
           name="dashboard"
           options={{
             title: 'Dashboard',
             tabBarIcon: ({ color }) => <LayoutDashboard color={color} size={25} />,
           }}
         />
-        <Tabs.Screen
+        <MaterialTopTabs.Screen
           name="transactions"
           options={{
             title: 'Transactions',
             tabBarIcon: ({ color }) => <ArrowRightLeft color={color} size={25} />,
           }}
         />
-        <Tabs.Screen
+        <MaterialTopTabs.Screen
           name="accounts"
           options={{
             title: 'Accounts',
             tabBarIcon: ({ color }) => <Wallet color={color} size={25} />,
           }}
         />
-        <Tabs.Screen
+        <MaterialTopTabs.Screen
           name="settings"
           options={{
             title: 'Settings',
             tabBarIcon: ({ color }) => <Settings color={color} size={25} />,
           }}
         />
-      </Tabs>
+      </MaterialTopTabs>
     </View>
   );
 }
@@ -130,8 +139,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    height: 72,
-    paddingBottom: 14,
     paddingTop: 8,
   },
   tabLabel: {

@@ -18,6 +18,8 @@ import { generateUUID } from '@/lib/utils/uuid';
 import { WidgetService } from '@/lib/widget/widgetService';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
+import { calculateAccountBalance } from '@/lib/utils/balance';
+import { formatCurrency } from '@/lib/utils/currency';
 import type { WalletAccount, WalletTransaction, TransactionType, WalletCategory } from '@/types/wallet';
 
 interface EditTransactionModalProps {
@@ -28,6 +30,7 @@ interface EditTransactionModalProps {
   userId: string | null;
   accounts: WalletAccount[];
   transaction: WalletTransaction | null;
+  currency?: string;
 }
 
 export function EditTransactionModal({
@@ -38,6 +41,7 @@ export function EditTransactionModal({
   userId,
   accounts,
   transaction,
+  currency = 'USD',
 }: EditTransactionModalProps) {
   const [txType, setTxType] = useState<TransactionType>('expense_personal');
   const [amount, setAmount] = useState('');
@@ -49,6 +53,7 @@ export function EditTransactionModal({
   const [categories, setCategories] = useState<WalletCategory[]>([]);
   const [showCustomCatInput, setShowCustomCatInput] = useState(false);
   const [customCatName, setCustomCatName] = useState('');
+  const [accountBalances, setAccountBalances] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (visible && orgId && transaction) {
@@ -59,6 +64,13 @@ export function EditTransactionModal({
       setCategory(transaction.category ?? '');
       setNotes(transaction.description ?? '');
       OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
+      OfflineDatabase.getTransactions(orgId, 10000, 0).then((allTxs) => {
+        const balances: Record<string, number> = {};
+        for (const acc of accounts) {
+          balances[acc.id] = calculateAccountBalance(acc, allTxs).current_balance;
+        }
+        setAccountBalances(balances);
+      }).catch(() => {});
     } else {
       setShowCustomCatInput(false);
       setCustomCatName('');
@@ -305,7 +317,7 @@ export function EditTransactionModal({
                         accountId === a.id && styles.accPillTextActive,
                       ]}
                     >
-                      {a.name}
+                      {a.name} • {formatCurrency(accountBalances[a.id] || 0, currency)}
                     </Text>
                   </TouchableOpacity>
                 ))
@@ -333,7 +345,7 @@ export function EditTransactionModal({
                             transferToId === a.id && styles.accPillTextActive,
                           ]}
                         >
-                          {a.name}
+                          {a.name} • {formatCurrency(accountBalances[a.id] || 0, currency)}
                         </Text>
                       </TouchableOpacity>
                     ))}

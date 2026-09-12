@@ -1,5 +1,6 @@
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, supabaseAdmin } from '@/lib/supabase/client';
 import { SyncEngine } from '@/lib/sync/syncEngine';
@@ -43,8 +44,10 @@ export function extractTokensFromUrl(url: string): { accessToken?: string; refre
 
 export class WalletAuthService {
   private static cachedOrgId: string | null = null;
+  private static cachedCurrency: string | null = null;
   private static hasPulledInitialData = false;
   private static readonly PRIMARY_ORG_KEY = '@orgwallet_primary_org_id';
+  private static readonly PRIMARY_ORG_CURRENCY_KEY = '@orgwallet_primary_org_currency';
 
   public static async getCachedOrgIdAsync(): Promise<string | null> {
     if (this.cachedOrgId) return this.cachedOrgId;
@@ -60,6 +63,20 @@ export class WalletAuthService {
     return null;
   }
 
+  public static async getCachedCurrencyAsync(): Promise<string> {
+    if (this.cachedCurrency) return this.cachedCurrency;
+    try {
+      const stored = await AsyncStorage.getItem(this.PRIMARY_ORG_CURRENCY_KEY);
+      if (stored) {
+        this.cachedCurrency = stored;
+        return stored;
+      }
+    } catch (e) {
+      console.error('[WalletAuthService] Failed to read cached currency:', e);
+    }
+    return 'USD';
+  }
+
   private static async setCachedOrgId(orgId: string) {
     this.cachedOrgId = orgId;
     try {
@@ -69,11 +86,22 @@ export class WalletAuthService {
     }
   }
 
+  public static async updateCachedCurrency(currency: string) {
+    this.cachedCurrency = currency;
+    try {
+      await AsyncStorage.setItem(this.PRIMARY_ORG_CURRENCY_KEY, currency);
+    } catch (e) {
+      console.error('[WalletAuthService] Failed to write cached currency:', e);
+    }
+  }
+
   public static async clearCache() {
     this.cachedOrgId = null;
+    this.cachedCurrency = null;
     this.hasPulledInitialData = false;
     try {
       await AsyncStorage.removeItem(this.PRIMARY_ORG_KEY);
+      await AsyncStorage.removeItem(this.PRIMARY_ORG_CURRENCY_KEY);
     } catch (e) {}
   }
 
@@ -112,8 +140,28 @@ export class WalletAuthService {
     await RateLimiter.assertAllowed('auth:oauth', RateLimitPolicies.AUTH_OAUTH);
     await this.clearAllUserData();
     await supabase.auth.signOut(); // Clear any stale session
-    const redirectTo = Linking.createURL('auth/oauth');
+    
+    // Web: use auth/callback for direct handling
+    const redirectTo = Linking.createURL(Platform.OS === 'web' ? 'auth/callback' : 'auth/oauth');
     console.log('[WalletAuthService] Google OAuth redirectTo:', redirectTo);
+
+    if (Platform.OS === 'web') {
+      // On web, let Supabase handle the redirect automatically (no skipBrowserRedirect)
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+        },
+      });
+      if (error) {
+        await RateLimiter.recordAttempt('auth:oauth', RateLimitPolicies.AUTH_OAUTH);
+        throw error;
+      }
+      await RateLimiter.reset('auth:oauth');
+      return data;
+    }
+
+    // Native: use manual WebBrowser flow
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -188,20 +236,23 @@ export class WalletAuthService {
   }
 
   // --- Rule #2: Personal Wallet Resolution & Auto-Spawning ---
-  public static async resolveUserWallet(userId: string): Promise<{ organizationId: string; createdNew: boolean }> {
+  public static async resolveUserWallet(userId: string): Promise<{ organizationId: string; currency: string; createdNew: boolean }> {
     const cachedId = await this.getCachedOrgIdAsync();
+    const cachedCurrency = await this.getCachedCurrencyAsync();
     if (cachedId) {
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
-        await SyncEngine.firstTimeAutoSync(cachedId);
+        SyncEngine.firstTimeAutoSync(cachedId).catch((e) =>
+          console.warn('[WalletAuthService] Background sync failed:', e)
+        );
       }
-      return { organizationId: cachedId, createdNew: false };
+      return { organizationId: cachedId, currency: cachedCurrency, createdNew: false };
     }
 
     // Step 1: Query organizations owned by this specific userId OR where userId is an active member
     const { data: ownedOrgs } = await supabaseAdmin
       .from('organizations')
-      .select('id, name, description, owner_id')
+      .select('id, name, description, owner_id, currency')
       .eq('owner_id', userId);
 
     const { data: memberRows } = await supabaseAdmin
@@ -215,7 +266,7 @@ export class WalletAuthService {
     if (memberOrgIds.length > 0) {
       const { data: mOrgs } = await supabaseAdmin
         .from('organizations')
-        .select('id, name, description, owner_id')
+        .select('id, name, description, owner_id, currency')
         .in('id', memberOrgIds);
       if (mOrgs) memberOrgs = mOrgs;
     }
@@ -232,11 +283,14 @@ export class WalletAuthService {
         if (isWalletOrganization(org.description, (org as any).is_wallet)) {
           console.log('[WalletAuthService] Using Personal Wallet org:', org.id);
           await this.setCachedOrgId(org.id);
+          await this.updateCachedCurrency(org.currency || 'USD');
           if (!this.hasPulledInitialData) {
             this.hasPulledInitialData = true;
-            await SyncEngine.firstTimeAutoSync(org.id);
+            SyncEngine.firstTimeAutoSync(org.id).catch((e) =>
+              console.warn('[WalletAuthService] Background sync failed:', e)
+            );
           }
-          return { organizationId: org.id, createdNew: false };
+          return { organizationId: org.id, currency: org.currency || 'USD', createdNew: false };
         }
       }
 
@@ -244,11 +298,14 @@ export class WalletAuthService {
       const firstOrg = userOrgs[0];
       console.log('[WalletAuthService] Using existing org as Personal Wallet fallback:', firstOrg.id);
       await this.setCachedOrgId(firstOrg.id);
+      await this.updateCachedCurrency(firstOrg.currency || 'USD');
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
-        await SyncEngine.firstTimeAutoSync(firstOrg.id);
+        SyncEngine.firstTimeAutoSync(firstOrg.id).catch((e) =>
+          console.warn('[WalletAuthService] Background sync failed:', e)
+        );
       }
-      return { organizationId: firstOrg.id, createdNew: false };
+      return { organizationId: firstOrg.id, currency: firstOrg.currency || 'USD', createdNew: false };
     }
 
     // Step 2: Rule #2 Auto-Create Personal Wallet & Spawn Default 'Cash' Account (Only if user has 0 organizations!)
@@ -300,8 +357,11 @@ export class WalletAuthService {
     }
 
     await this.setCachedOrgId(newOrg.id);
+    await this.updateCachedCurrency('USD');
     this.hasPulledInitialData = true;
-    await SyncEngine.firstTimeAutoSync(newOrg.id);
-    return { organizationId: newOrg.id, createdNew: true };
+    SyncEngine.firstTimeAutoSync(newOrg.id).catch((e) =>
+      console.warn('[WalletAuthService] Background sync failed:', e)
+    );
+    return { organizationId: newOrg.id, currency: 'USD', createdNew: true };
   }
 }

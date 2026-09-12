@@ -7,6 +7,7 @@ import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WidgetService } from '@/lib/widget/widgetService';
 import { registerBackgroundSync } from '@/lib/sync/backgroundTask';
+import NetInfo from '@react-native-community/netinfo';
 import { Colors } from '@/theme/colors';
 
 
@@ -17,8 +18,10 @@ export default function RootLayout() {
       console.error('[RootLayout] Failed to initialize SQLite database:', e)
     );
 
-    // Initial check for online status
-    SyncEngine.setNetworkStatus(true);
+    // Initial check and listener for online status
+    const unsubscribeNetInfo = NetInfo.addEventListener((state) => {
+      SyncEngine.setNetworkStatus(state.isConnected ?? false);
+    });
 
     // Refresh Android widget on app launch
     if (Platform.OS === 'android') {
@@ -27,6 +30,10 @@ export default function RootLayout() {
 
     // Register background sync task
     registerBackgroundSync().catch(() => {});
+
+    return () => {
+      unsubscribeNetInfo();
+    };
   }, []);
 
   return (
