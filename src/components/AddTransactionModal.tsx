@@ -473,7 +473,7 @@ export function AddTransactionModal({
               )}
             </TouchableOpacity>
 
-          <View style={{ zIndex: 100, position: 'relative' }}>
+          <View style={{ zIndex: 100, elevation: 100, position: 'relative' }}>
             <View style={[styles.selectorsRow, { gap: 0 }]}>
             {/* LEFT SELECTOR: Account (or From Account) */}
             <View style={[styles.selectorCol, leftColStyle]}>
