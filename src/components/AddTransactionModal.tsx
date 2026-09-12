@@ -8,8 +8,8 @@ import {
   Alert,
   StyleSheet,
   ScrollView,
+  InteractionManager,
 } from 'react-native';
-import Animated, { SlideInDown, SlideOutDown, LinearTransition, FadeIn, FadeOut, useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated';
 import { X, Plus, Delete, AlertCircle, ChevronDown } from 'lucide-react-native';
 
 // Safely evaluates arithmetic expressions without eval()
@@ -86,10 +86,9 @@ import { SyncEngine } from '@/lib/sync/syncEngine';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import { generateUUID } from '@/lib/utils/uuid';
-import { WidgetService } from '@/lib/widget/widgetService';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
-import { calculateAccountBalance } from '@/lib/utils/balance';
+import { WidgetService } from '@/lib/widget/widgetService';
 import { formatCurrency } from '@/lib/utils/currency';
 import type { WalletAccount, WalletTransaction, TransactionType, WalletCategory } from '@/types/wallet';
 
@@ -128,70 +127,49 @@ export function AddTransactionModal({
   const [accountBalances, setAccountBalances] = useState<Record<string, number>>({});
   const [showAccountDropdown, setShowAccountDropdown] = useState<'from' | 'to' | null>(null);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [modalHeight, setModalHeight] = useState<number | null>(null);
-  const [isAnimationReady, setIsAnimationReady] = useState(false);
-  const [internalVisible, setInternalVisible] = useState(visible);
+  const [prevInitialType, setPrevInitialType] = useState(initialType);
 
+  // Sync initialType without triggering a second render pass during animation
+  if (initialType !== prevInitialType) {
+    setPrevInitialType(initialType);
+    if (initialType) setTxType(initialType);
+  }
+
+  // DEBUG LOGGING
   useEffect(() => {
-    if (visible) {
-      setInternalVisible(true);
-    } else {
-      const t = setTimeout(() => setInternalVisible(false), 300);
-      return () => clearTimeout(t);
-    }
-  }, [visible]);
+    console.log('[AddTransactionModal] State changed:', {
+      visible, txType, showAccountDropdown, showCategoryDropdown
+    });
+  }, [visible, txType, showAccountDropdown, showCategoryDropdown]);
 
-  useEffect(() => {
-    if (visible) {
-      const timer = setTimeout(() => setIsAnimationReady(true), 350);
-      return () => clearTimeout(timer);
-    } else {
-      setIsAnimationReady(false);
-    }
-  }, [visible]);
+  const leftExpanded = showAccountDropdown === 'from';
+  const rightExpanded = showAccountDropdown === 'to' || showCategoryDropdown;
+  const selectorExpanded = leftExpanded || rightExpanded;
 
-  const leftFlex = useDerivedValue(() => {
-    if (showAccountDropdown) return withSpring(100, { damping: 80, stiffness: 800 });
-    if (showCategoryDropdown) return withSpring(0, { damping: 80, stiffness: 800 });
-    return withSpring(50, { damping: 80, stiffness: 800 });
-  });
-
-  const rightFlex = useDerivedValue(() => {
-    if (showCategoryDropdown) return withSpring(100, { damping: 80, stiffness: 800 });
-    if (showAccountDropdown) return withSpring(0, { damping: 80, stiffness: 800 });
-    return withSpring(50, { damping: 80, stiffness: 800 });
-  });
-
-  const marginAnim = useDerivedValue(() => {
-    if (showAccountDropdown || showCategoryDropdown) return withSpring(0, { damping: 80, stiffness: 800 });
-    return withSpring(12, { damping: 80, stiffness: 800 }); // base gap
-  });
-
-  const leftStyle = useAnimatedStyle(() => ({
-    flex: leftFlex.value,
-    flexBasis: 0,
-    minWidth: 0,
-    opacity: leftFlex.value < 1 ? 0 : 1,
-    marginRight: marginAnim.value / 2,
-    overflow: 'hidden',
-  }));
-
-  const rightStyle = useAnimatedStyle(() => ({
-    flex: rightFlex.value,
-    flexBasis: 0,
-    minWidth: 0,
-    opacity: rightFlex.value < 1 ? 0 : 1,
-    marginLeft: marginAnim.value / 2,
-    overflow: 'hidden',
-  }));
+  const leftColStyle = {
+    flex: leftExpanded ? 1 : rightExpanded ? 0 : 1,
+    opacity: rightExpanded ? 0 : 1,
+    minWidth: rightExpanded ? 0 : undefined,
+    overflow: 'hidden' as const,
+    marginRight: selectorExpanded ? 0 : 6,
+  };
+  const rightColStyle = {
+    flex: rightExpanded ? 1 : leftExpanded ? 0 : 1,
+    opacity: leftExpanded ? 0 : 1,
+    minWidth: leftExpanded ? 0 : undefined,
+    overflow: 'hidden' as const,
+    marginLeft: selectorExpanded ? 0 : 6,
+  };
 
   const toggleAccountDropdown = (type: 'from' | 'to' | null) => {
+    console.log('[AddTransactionModal] toggleAccountDropdown called with:', type);
     const nextState = showAccountDropdown === type ? null : type;
     setShowAccountDropdown(nextState);
     if (nextState) setShowCategoryDropdown(false);
   };
 
   const toggleCategoryDropdown = () => {
+    console.log('[AddTransactionModal] toggleCategoryDropdown called');
     const nextState = !showCategoryDropdown;
     setShowCategoryDropdown(nextState);
     if (nextState) setShowAccountDropdown(null);
@@ -202,6 +180,7 @@ export function AddTransactionModal({
   }, [displayExpr]);
 
   const handleKeypadPress = (key: string) => {
+    console.log('[AddTransactionModal] Keypad pressed:', key, 'Current display:', displayExpr);
     if (key === '=') {
       const val = evaluateMathExpression(displayExpr);
       setDisplayExpr(String(val));
@@ -236,31 +215,42 @@ export function AddTransactionModal({
   };
 
   useEffect(() => {
-    if (visible && orgId) {
-      setModalHeight(null);
-      setShowAccountDropdown(null);
-      setShowCategoryDropdown(false);
-      if (initialType) {
-        setTxType(initialType);
-      }
-      if (accounts.length > 0 && !accountId) {
-        setAccountId(accounts[0].id);
-      }
-      OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
-      OfflineDatabase.getTransactions(orgId, 10000, 0).then((allTxs) => {
-        const balances: Record<string, number> = {};
-        for (const acc of accounts) {
-          balances[acc.id] = calculateAccountBalance(acc, allTxs).current_balance;
-        }
-        setAccountBalances(balances);
-      }).catch(() => {});
+    if (visible) {
+      console.log(`[Perf Tracker] 'AddTransactionModal' rendering visible=true at ${new Date().toISOString()} (${Date.now()})`);
     } else {
       setShowCustomCatInput(false);
       setCustomCatName('');
       setShowAccountDropdown(null);
       setShowCategoryDropdown(false);
+      setDisplayExpr('0');
+      setCategory('');
+      setNotes('');
+      setTransferToId('');
     }
-  }, [visible, accounts, accountId, initialType, orgId]);
+  }, [visible]);
+
+  useEffect(() => {
+    if (visible && accounts.length > 0 && !accountId) {
+      setAccountId(accounts[0].id);
+    }
+  }, [visible, accounts, accountId]);
+
+  useEffect(() => {
+    if (visible && orgId) {
+      InteractionManager.runAfterInteractions(() => {
+        console.log(`[Perf Tracker] 'AddTransactionModal' starting background data fetch after animations at ${new Date().toISOString()} (${Date.now()})`);
+        OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
+        OfflineDatabase.getAccountsWithBalances(orgId).then((accBalances) => {
+          const balances: Record<string, number> = {};
+          for (const b of accBalances) {
+            balances[b.id] = b.current_balance;
+          }
+          setAccountBalances(balances);
+          console.log(`[Perf Tracker] 'AddTransactionModal' finished background data fetch at ${new Date().toISOString()} (${Date.now()})`);
+        }).catch(() => {});
+      });
+    }
+  }, [visible, orgId, accounts]);
 
   const filteredCategories = categories.filter((c) => {
     if (txType === 'income') return c.aliases?.includes('type:income');
@@ -387,19 +377,9 @@ export function AddTransactionModal({
   };
 
   return (
-    <Modal visible={internalVisible} animationType="none" transparent>
-      {visible && (
-      <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(200)} style={styles.modalOverlay}>
-        <Animated.View 
-          entering={SlideInDown.springify().damping(40).stiffness(500)}
-          exiting={SlideOutDown.duration(200)}
-          style={[styles.modalCard, modalHeight ? { height: modalHeight } : { maxHeight: '95%' }]}
-          onLayout={(e) => {
-            if (!modalHeight) {
-              setModalHeight(e.nativeEvent.layout.height);
-            }
-          }}
-        >
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={[styles.modalCard, { maxHeight: '95%' }]}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Add Transaction</Text>
             <TouchableOpacity
@@ -481,7 +461,7 @@ export function AddTransactionModal({
                     <Text style={styles.evalText}>= {formatCurrency(evaluatedAmount, currency)}</Text>
                   )}
                 </View>
-                <TouchableOpacity onPress={() => handleKeypadPress('BACKSPACE')} style={styles.backspaceBtn}>
+                <TouchableOpacity onPress={() => handleKeypadPress('BACKSPACE')} onLongPress={() => setDisplayExpr('0')} style={styles.backspaceBtn}>
                   <Delete size={24} color={Colors.textLight} />
                 </TouchableOpacity>
               </View>
@@ -493,14 +473,15 @@ export function AddTransactionModal({
               )}
             </TouchableOpacity>
 
-          <View style={[styles.selectorsRow, { gap: 0 }]}>
+          <View style={{ zIndex: 100, elevation: 100, position: 'relative' }}>
+            <View style={[styles.selectorsRow, { gap: 0 }]}>
             {/* LEFT SELECTOR: Account (or From Account) */}
-            <Animated.View style={[styles.selectorCol, leftStyle]}>
+            <View style={[styles.selectorCol, leftColStyle]}>
               <Text style={styles.selectorLabel} numberOfLines={1}>
                 {txType === 'transfer' ? 'From' : 'Account'}
               </Text>
               <TouchableOpacity
-                style={[styles.selectorButton, !!showAccountDropdown && styles.selectorButtonActive]}
+                style={[styles.selectorButton, showAccountDropdown === 'from' && styles.selectorButtonActive]}
                 onPress={() => toggleAccountDropdown('from')}
               >
                 <Text style={styles.selectorButtonText} numberOfLines={1}>
@@ -508,17 +489,17 @@ export function AddTransactionModal({
                 </Text>
                 <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
               </TouchableOpacity>
-            </Animated.View>
+            </View>
 
             {/* RIGHT SELECTOR: Category OR To Account */}
-            <Animated.View style={[styles.selectorCol, rightStyle]}>
+            <View style={[styles.selectorCol, rightColStyle]}>
               <Text style={styles.selectorLabel} numberOfLines={1}>
                 {txType === 'transfer' ? 'To' : 'Category'}
               </Text>
 
               {txType === 'transfer' ? (
                 <TouchableOpacity
-                  style={[styles.selectorButton, !!showAccountDropdown && styles.selectorButtonActive]}
+                  style={[styles.selectorButton, showAccountDropdown === 'to' && styles.selectorButtonActive]}
                   onPress={() => toggleAccountDropdown('to')}
                 >
                   <Text style={styles.selectorButtonText} numberOfLines={1}>
@@ -537,20 +518,19 @@ export function AddTransactionModal({
                   <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
                 </TouchableOpacity>
               )}
-            </Animated.View>
+            </View>
           </View>
 
-          {/* Render Dropdown Lists below so they maintain 100% width and don't distort during transition */}
+          {/* Floating Dropdown Lists */}
           {showAccountDropdown === 'from' && (
-            <Animated.View layout={LinearTransition.springify().damping(50).stiffness(350)} entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)}>
-              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
                 {accounts.map((a) => (
                   <TouchableOpacity
                     key={a.id}
                     style={[styles.dropdownItem, accountId === a.id && styles.dropdownItemActive]}
                     onPress={() => {
                       setAccountId(a.id);
-                      toggleAccountDropdown(null);
+                      setTimeout(() => toggleAccountDropdown(null), 50);
                     }}
                   >
                     <Text style={[styles.dropdownItemText, accountId === a.id && styles.dropdownItemTextActive]}>
@@ -562,19 +542,17 @@ export function AddTransactionModal({
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-            </Animated.View>
           )}
 
           {showAccountDropdown === 'to' && txType === 'transfer' && (
-            <Animated.View layout={LinearTransition.springify().damping(50).stiffness(350)} entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)}>
-              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
                 {accounts.filter(a => a.id !== accountId).map((a) => (
                   <TouchableOpacity
                     key={a.id}
                     style={[styles.dropdownItem, transferToId === a.id && styles.dropdownItemActive]}
                     onPress={() => {
                       setTransferToId(a.id);
-                      toggleAccountDropdown(null);
+                      setTimeout(() => toggleAccountDropdown(null), 50);
                     }}
                   >
                     <Text style={[styles.dropdownItemText, transferToId === a.id && styles.dropdownItemTextActive]}>
@@ -586,19 +564,17 @@ export function AddTransactionModal({
                   </TouchableOpacity>
                 ))}
               </ScrollView>
-            </Animated.View>
           )}
 
           {showCategoryDropdown && (
-            <Animated.View layout={LinearTransition.springify().damping(50).stiffness(350)} entering={FadeIn.duration(150)} exiting={FadeOut.duration(150)}>
-              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
                 {filteredCategories.map((cat) => (
                   <TouchableOpacity
                     key={cat.id}
                     style={[styles.dropdownItem, category === cat.display_name && styles.dropdownItemActive]}
                     onPress={() => {
                       setCategory(cat.display_name);
-                      toggleCategoryDropdown();
+                      setTimeout(() => toggleCategoryDropdown(), 50);
                     }}
                   >
                     <Text style={[styles.dropdownItemText, category === cat.display_name && styles.dropdownItemTextActive]}>
@@ -610,18 +586,18 @@ export function AddTransactionModal({
                   style={styles.dropdownItemAdd}
                   onPress={() => {
                     setShowCustomCatInput(!showCustomCatInput);
-                    toggleCategoryDropdown();
+                    setTimeout(() => toggleCategoryDropdown(), 50);
                   }}
                 >
                   <Plus size={14} color={Colors.primary} />
                   <Text style={styles.dropdownItemAddText}>+ Custom</Text>
                 </TouchableOpacity>
               </ScrollView>
-            </Animated.View>
           )}
+          </View>
 
           {showCustomCatInput && txType !== 'transfer' && (
-            <Animated.View layout={LinearTransition.springify().damping(50).stiffness(350)} style={[styles.customCategoryRow, { marginTop: 12 }]}>
+            <View style={[styles.customCategoryRow, { marginTop: 12 }]}>
               <TextInput
                 style={styles.customCategoryInput}
                 placeholder="Enter custom category name..."
@@ -640,10 +616,10 @@ export function AddTransactionModal({
               >
                 <Text style={styles.customCategoryAddBtnText}>Add</Text>
               </TouchableOpacity>
-            </Animated.View>
+            </View>
           )}
 
-          <Animated.View layout={isAnimationReady ? LinearTransition.springify().damping(50).stiffness(350) : undefined}>
+          <View pointerEvents={selectorExpanded ? 'none' : 'auto'}>
             <Text style={styles.inputLabel}>Notes (Optional)</Text>
           <TextInput
             style={styles.input}
@@ -694,11 +670,10 @@ export function AddTransactionModal({
               </View>
             ))}
           </View>
-          </Animated.View>
+          </View>
         </ScrollView>
-        </Animated.View>
-      </Animated.View>
-      )}
+        </View>
+      </View>
     </Modal>
   );
 }
@@ -812,6 +787,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary + '15',
   },
   dropdownList: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
     backgroundColor: Colors.surface,
     borderRadius: Tokens.radius.md,
     borderWidth: 1,
@@ -819,6 +798,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
     maxHeight: 250,
     overflow: 'hidden',
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   dropdownItem: {
     paddingHorizontal: 12,

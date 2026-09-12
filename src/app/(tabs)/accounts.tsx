@@ -16,12 +16,12 @@ import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
-import { getAccountsWithBalances, type AccountWithBalance } from '@/lib/utils/balance';
-import { formatCurrency } from '@/lib/utils/currency';
 import { generateUUID } from '@/lib/utils/uuid';
+import { formatCurrency } from '@/lib/utils/currency';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
-import type { WalletAccount, WalletTransaction } from '@/types/wallet';
+import type { WalletAccount } from '@/types/wallet';
+import type { AccountWithBalance } from '@/lib/utils/balance';
 
 export default function AccountsScreen() {
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
@@ -49,9 +49,7 @@ export default function AccountsScreen() {
   };
 
   const loadLocalAccounts = useCallback(async (organizationId: string, archived: boolean) => {
-    const rawAccounts = await OfflineDatabase.getAccounts(organizationId, archived);
-    const txs = await OfflineDatabase.getTransactions(organizationId, 500);
-    const withBalances = getAccountsWithBalances(rawAccounts, txs);
+    const withBalances = await OfflineDatabase.getAccountsWithBalances(organizationId, archived);
     setAccounts(withBalances);
   }, []);
 

@@ -3,7 +3,7 @@ import { OfflineDatabase } from '@/lib/database/sqlite';
 import { supabase, supabaseAdmin } from '@/lib/supabase/client';
 import { generateUUID, isValidUUID } from '@/lib/utils/uuid';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
-import { WidgetService } from '@/lib/widget/widgetService';
+import { Platform } from 'react-native';
 import type { SyncSettings, OfflineSyncQueueItem } from '@/types/wallet';
 
 const SYNC_SETTINGS_KEY = 'orgwallet_sync_settings';
@@ -115,7 +115,10 @@ export class SyncEngine {
 
       this.isSyncing = false;
       await this.notifyListeners();
-      WidgetService.refreshWidgetData(organizationId).catch(() => {});
+      if (Platform.OS === 'android') {
+        const { WidgetService } = require('@/lib/widget/widgetService');
+        WidgetService.refreshWidgetData(organizationId).catch(() => {});
+      }
       return { success: true };
     } catch (error: any) {
       console.error('[SyncEngine] Sync failed:', error);
@@ -151,7 +154,10 @@ export class SyncEngine {
       this.isSyncing = false;
       await this.notifyListeners();
       console.log('[SyncEngine] First-time auto sync completed successfully.');
-      WidgetService.refreshWidgetData(organizationId).catch(() => {});
+      if (Platform.OS === 'android') {
+        const { WidgetService } = require('@/lib/widget/widgetService');
+        WidgetService.refreshWidgetData(organizationId).catch(() => {});
+      }
       return { success: true };
     } catch (error: any) {
       console.error('[SyncEngine] First-time auto sync failed:', error);
