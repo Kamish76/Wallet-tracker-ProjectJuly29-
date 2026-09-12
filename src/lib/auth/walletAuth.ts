@@ -242,7 +242,9 @@ export class WalletAuthService {
     if (cachedId) {
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
-        await SyncEngine.firstTimeAutoSync(cachedId);
+        SyncEngine.firstTimeAutoSync(cachedId).catch((e) =>
+          console.warn('[WalletAuthService] Background sync failed:', e)
+        );
       }
       return { organizationId: cachedId, currency: cachedCurrency, createdNew: false };
     }
@@ -284,7 +286,9 @@ export class WalletAuthService {
           await this.updateCachedCurrency(org.currency || 'USD');
           if (!this.hasPulledInitialData) {
             this.hasPulledInitialData = true;
-            await SyncEngine.firstTimeAutoSync(org.id);
+            SyncEngine.firstTimeAutoSync(org.id).catch((e) =>
+              console.warn('[WalletAuthService] Background sync failed:', e)
+            );
           }
           return { organizationId: org.id, currency: org.currency || 'USD', createdNew: false };
         }
@@ -297,7 +301,9 @@ export class WalletAuthService {
       await this.updateCachedCurrency(firstOrg.currency || 'USD');
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
-        await SyncEngine.firstTimeAutoSync(firstOrg.id);
+        SyncEngine.firstTimeAutoSync(firstOrg.id).catch((e) =>
+          console.warn('[WalletAuthService] Background sync failed:', e)
+        );
       }
       return { organizationId: firstOrg.id, currency: firstOrg.currency || 'USD', createdNew: false };
     }
@@ -353,7 +359,9 @@ export class WalletAuthService {
     await this.setCachedOrgId(newOrg.id);
     await this.updateCachedCurrency('USD');
     this.hasPulledInitialData = true;
-    await SyncEngine.firstTimeAutoSync(newOrg.id);
+    SyncEngine.firstTimeAutoSync(newOrg.id).catch((e) =>
+      console.warn('[WalletAuthService] Background sync failed:', e)
+    );
     return { organizationId: newOrg.id, currency: 'USD', createdNew: true };
   }
 }

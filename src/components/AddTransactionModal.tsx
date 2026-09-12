@@ -8,19 +8,9 @@ import {
   Alert,
   StyleSheet,
   ScrollView,
-  LayoutAnimation,
-  Platform,
-  UIManager,
 } from 'react-native';
-import Animated, { SlideInLeft, SlideOutLeft, SlideInRight, SlideOutRight, SlideInDown, SlideOutDown, LinearTransition, FadeIn, FadeOut, useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated';
+import Animated, { SlideInDown, SlideOutDown, LinearTransition, FadeIn, FadeOut, useAnimatedStyle, useDerivedValue, withSpring } from 'react-native-reanimated';
 import { X, Plus, Delete, AlertCircle, ChevronDown } from 'lucide-react-native';
-
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // Safely evaluates arithmetic expressions without eval()
 function evaluateMathExpression(expr: string): number {
@@ -161,32 +151,36 @@ export function AddTransactionModal({
   }, [visible]);
 
   const leftFlex = useDerivedValue(() => {
-    if (showAccountDropdown) return withSpring(100, { damping: 50, stiffness: 350 });
-    if (showCategoryDropdown) return withSpring(0.001, { damping: 50, stiffness: 350 });
-    return withSpring(50, { damping: 50, stiffness: 350 });
+    if (showAccountDropdown) return withSpring(100, { damping: 80, stiffness: 800 });
+    if (showCategoryDropdown) return withSpring(0, { damping: 80, stiffness: 800 });
+    return withSpring(50, { damping: 80, stiffness: 800 });
   });
 
   const rightFlex = useDerivedValue(() => {
-    if (showCategoryDropdown) return withSpring(100, { damping: 50, stiffness: 350 });
-    if (showAccountDropdown) return withSpring(0.001, { damping: 50, stiffness: 350 });
-    return withSpring(50, { damping: 50, stiffness: 350 });
+    if (showCategoryDropdown) return withSpring(100, { damping: 80, stiffness: 800 });
+    if (showAccountDropdown) return withSpring(0, { damping: 80, stiffness: 800 });
+    return withSpring(50, { damping: 80, stiffness: 800 });
   });
 
   const marginAnim = useDerivedValue(() => {
-    if (showAccountDropdown || showCategoryDropdown) return withSpring(0, { damping: 50, stiffness: 350 });
-    return withSpring(12, { damping: 50, stiffness: 350 }); // base gap
+    if (showAccountDropdown || showCategoryDropdown) return withSpring(0, { damping: 80, stiffness: 800 });
+    return withSpring(12, { damping: 80, stiffness: 800 }); // base gap
   });
 
   const leftStyle = useAnimatedStyle(() => ({
     flex: leftFlex.value,
-    opacity: leftFlex.value < 5 ? 0 : 1,
+    flexBasis: 0,
+    minWidth: 0,
+    opacity: leftFlex.value < 1 ? 0 : 1,
     marginRight: marginAnim.value / 2,
     overflow: 'hidden',
   }));
 
   const rightStyle = useAnimatedStyle(() => ({
     flex: rightFlex.value,
-    opacity: rightFlex.value < 5 ? 0 : 1,
+    flexBasis: 0,
+    minWidth: 0,
+    opacity: rightFlex.value < 1 ? 0 : 1,
     marginLeft: marginAnim.value / 2,
     overflow: 'hidden',
   }));
@@ -397,7 +391,7 @@ export function AddTransactionModal({
       {visible && (
       <Animated.View entering={FadeIn.duration(200)} exiting={FadeOut.duration(200)} style={styles.modalOverlay}>
         <Animated.View 
-          entering={SlideInDown.springify().damping(25).stiffness(250)}
+          entering={SlideInDown.springify().damping(40).stiffness(500)}
           exiting={SlideOutDown.duration(200)}
           style={[styles.modalCard, modalHeight ? { height: modalHeight } : { maxHeight: '95%' }]}
           onLayout={(e) => {
@@ -670,7 +664,7 @@ export function AddTransactionModal({
           </TouchableOpacity>
 
           {/* Keypad */}
-          <View style={[styles.keypad, { marginTop: 24 }]}>
+          <View style={[styles.keypad, { marginTop: 24, minHeight: 260 }]}>
             {[
               ['+', '7', '8', '9'],
               ['-', '4', '5', '6'],
