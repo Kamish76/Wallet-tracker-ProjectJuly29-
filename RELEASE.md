@@ -1,13 +1,13 @@
-# OrgWallet - Release Notes & Google Play Console Guide (v0.4.3)
+# OrgWallet - Release Notes & Google Play Console Guide (v0.4.4)
 
-This document serves as the official **Release Notes** for **OrgWallet v0.4.3** (and a comprehensive summary of all changes since the initial release v0.1.0) as well as an end-to-end guide for releasing **OrgWallet v0.4.3** on the Google Play Store using Expo Application Services (EAS) and the Google Play Console.
+This document serves as the official **Release Notes** for **OrgWallet v0.4.4** (and a comprehensive summary of all changes since the initial release v0.1.0) as well as an end-to-end guide for releasing **OrgWallet v0.4.4** on the Google Play Store using Expo Application Services (EAS) and the Google Play Console.
 
 ---
 
 ## 📋 Table of Contents
 
-1. [Release Notes — OrgWallet v0.4.3](#1-release-notes--orgwallet-v043)
-2. [Summary of Changes Since Initial Release (v0.1.0 to v0.4.3)](#2-summary-of-changes-since-initial-release-v010-to-v043)
+1. [Release Notes — OrgWallet v0.4.4](#1-release-notes--orgwallet-v044)
+2. [Summary of Changes Since Initial Release (v0.1.0 to v0.4.4)](#2-summary-of-changes-since-initial-release-v010-to-v044)
 3. [Prerequisites & EAS Configuration](#3-prerequisites--eas-configuration)
 4. [Required Assets for Google Play Console](#4-required-assets-for-google-play-console)
 5. [Building the Android App Bundle (.aab)](#5-building-the-android-app-bundle-aab)
@@ -18,14 +18,25 @@ This document serves as the official **Release Notes** for **OrgWallet v0.4.3** 
 
 ---
 
-## 1. Release Notes — OrgWallet v0.4.3
+## 1. Release Notes — OrgWallet v0.4.4
 
-**Release Version:** `v0.4.3`  
-**Android Version Code:** `8`  
-**Release Date:** September 12, 2026  
+**Release Version:** `v0.4.4`  
+**Android Version Code:** `9`  
+**Release Date:** September 13, 2026  
 
 ### 🌟 Overview
-**OrgWallet v0.4.3** introduces extensive Web Platform Support using `react-native-web` alongside a dynamic currency system, custom Reanimated transaction modal upgrades, and real-time network connectivity tracking via `netinfo`.
+**OrgWallet v0.4.4** is a Performance & UI Refinement Release that introduces a completely rebuilt Edit Transaction modal to perfectly match the sleek design of the Add Transaction modal, resolves persistent ghost-click layout bugs on Android, fixes deep link navigation for widgets, optimizes list rendering performance, and resolves multiple security vulnerabilities.
+
+### 🚀 What's New in v0.4.4
+- **Edit Transaction Modal Overhaul**: Rebuilt the Edit Transaction modal to match the Add Transaction modal, including floating dropdowns, custom keypad, and math expression evaluation.
+- **Deep Link Navigation**: Introduced dedicated redirect routes for the Android home screen widget deep links.
+- **Keypad Reset**: Added a long-press gesture to the backspace button to instantly clear amounts.
+- **Fixes & Refactoring**: Fixed ghost-click bugs on Android floating dropdowns, optimized Dashboard and Transactions screen rendering with `useCallback` and SQL aggregation, migrated background sync tasks to `expo-background-task`, fixed circular dependency warnings, and updated dependencies to resolve multiple `npm audit` vulnerabilities.
+
+---
+
+### 🔥 Key Highlights in v0.4.3
+- **Web Platform Support:** Added extensive web compatibility using `react-native-web`.
 
 ### 🚀 What's New in v0.4.3
 - **Web Platform Support:** Added extensive web compatibility using `react-native-web`, complete with Metro WASM configuration and platform-specific OAuth session handling.
@@ -67,13 +78,14 @@ This document serves as the official **Release Notes** for **OrgWallet v0.4.3** 
 
 ---
 
-## 2. Summary of Changes Since Initial Release (v0.1.0 to v0.4.3)
+## 2. Summary of Changes Since Initial Release (v0.1.0 to v0.4.4)
 
-Below is a complete summary of all architectural, functional, and visual changes made from the initial release (`v0.1.0`) through `v0.4.3`:
+Below is a complete summary of all architectural, functional, and visual changes made from the initial release (`v0.1.0`) through `v0.4.4`:
 
 | Release | Date | Key Capabilities & Changes |
 | :--- | :--- | :--- |
-| **`v0.4.3`** *(Current)* | **2026-09-12** | • **Web Support**: Extensive web compatibility using `react-native-web` and Metro WASM configuration.<br>• **Dynamic Currency**: Currency support across UI, with offline sync auto-reload.<br>• **Modal Upgrades**: Custom Reanimated spring physics, dynamic dropdown menus, negative number support, and account balances in modals.<br>• **Network & Stability**: Integrated `netinfo` and improved sync/auth error handling. |
+| **`v0.4.4`** *(Current)* | **2026-09-13** | • **UI Polish**: Overhauled Edit Transaction modal, fixed Android ghost clicks.<br>• **Performance**: Optimized SQL aggregation and list rendering (`useCallback`).<br>• **Stability**: Fixed deep linking routes for widgets and updated to `expo-background-task`.<br>• **Security**: Fixed multiple high/moderate vulnerabilities via `npm audit fix --legacy-peer-deps`. |
+| **`v0.4.3`** | **2026-09-12** | • **Web Support**: Extensive web compatibility using `react-native-web` and Metro WASM configuration.<br>• **Dynamic Currency**: Currency support across UI, with offline sync auto-reload.<br>• **Modal Upgrades**: Custom Reanimated spring physics, dynamic dropdown menus, negative number support, and account balances in modals.<br>• **Network & Stability**: Integrated `netinfo` and improved sync/auth error handling. |
 | **`v0.4.2`** | **2026-08-21** | • **Widget Stability**: Fixed Android widget loading screen issue and background sync tasks by registering headless tasks globally in `index.js`.<br>• **UI Enhancements**: Added padding to Dashboard, raised Tab Bar, enlarged Tab Bar icons.<br>• **Sync Settings**: Added 1-hour and 3-hour periodic sync intervals. |
 | **`v0.4.1`** | **2026-08-19** | • **ProGuard Hotfix**: Added `-keep class expo.modules.** { *; }` to prevent crashes on Android launch in Release builds. |
 | **`v0.4.0`** | **2026-08-18** | • Added hardware keyboard and integrated calculator support to transaction modal.<br>• Enhanced dashboard and transaction UI integration with SQLite.<br>• Fixed background widget crashes and silent SQLite wipes during sync.<br>• Generalized Android build rules and added device migration documentation. |
@@ -110,8 +122,8 @@ We have **already created** `eas.json` in your root directory and configured you
 ### Step 3.3: Verify `app.json` Metadata
 Check `app.json` before triggering a build:
 - **`android.package`**: `"com.kamish.orgfinance"` (Unique package identifier on Google Play).
-- **`version`**: `"0.2.0"` (User-facing version string).
-- **`android.versionCode`**: Ensure `"versionCode": 2` is set inside the `android` block. Every time you upload a new `.aab` to Play Console, you **must increment `versionCode` by 1** (e.g., `1` -> `2` -> `3`).
+- **`version`**: `"0.4.4"` (User-facing version string).
+- **`android.versionCode`**: Ensure `"versionCode": 9` is set inside the `android` block. Every time you upload a new `.aab` to Play Console, you **must increment `versionCode` by 1** (e.g., `8` -> `9` -> `10`).
 
 ---
 
