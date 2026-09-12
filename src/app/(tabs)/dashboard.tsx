@@ -56,41 +56,6 @@ export default function DashboardScreen() {
     return { start, end };
   };
 
-  const handleEditTransaction = (tx: WalletTransaction) => {
-    setSelectedTx(tx);
-    setEditModalVisible(true);
-  };
-
-  const handleDeleteConfirm = (tx: WalletTransaction) => {
-    if (!orgId) return;
-    Alert.alert(
-      'Delete Transaction',
-      `Delete ${tx.category || 'this transaction'} of $${Number(tx.amount).toFixed(2)}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await OfflineDatabase.deleteTransaction(tx.id, orgId);
-              await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', {
-                id: tx.id,
-                organization_id: orgId,
-              });
-              if (SyncEngine.getOnlineStatus()) {
-                SyncEngine.syncNow(orgId).catch(() => {});
-              }
-              await loadLocalData(orgId, undefined, 0);
-            } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to delete transaction.');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   useEffect(() => {
     if (
       paramTxType === 'expense_personal' ||
@@ -185,7 +150,43 @@ export default function DashboardScreen() {
     init();
   }, []); // Remove loadLocalData dependency to prevent re-running init on month change
 
-  // 1. Subscribe to SyncEngine notifications so Dashboard updates automatically after sync
+  // 1. Subscribe to SyncEngine notifications so transactions update automatically after sync
+
+  const handleEditTransaction = useCallback((tx: WalletTransaction) => {
+    setSelectedTx(tx);
+    setEditModalVisible(true);
+  }, []);
+
+  const handleDeleteConfirm = useCallback((tx: WalletTransaction) => {
+    if (!orgId) return;
+    Alert.alert(
+      'Delete Transaction',
+      `Delete ${tx.category || 'this transaction'} of $${Number(tx.amount).toFixed(2)}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await OfflineDatabase.deleteTransaction(tx.id, orgId);
+              await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', {
+                id: tx.id,
+                organization_id: orgId,
+              });
+              if (SyncEngine.getOnlineStatus()) {
+                SyncEngine.syncNow(orgId).catch(() => {});
+              }
+              await loadLocalData(orgId, undefined, 0);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to delete transaction.');
+            }
+          },
+        },
+      ]
+    );
+  }, [orgId, loadLocalData]);
+
   useEffect(() => {
     const unsubscribe = SyncEngine.subscribe((queueCount, isSyncing) => {
       if (!isSyncing && orgId) {
@@ -371,7 +372,10 @@ export default function DashboardScreen() {
       {/* Floating Add Transaction Button (FAB) at bottom-right */}
       <TouchableOpacity
         style={styles.fabButton}
-        onPress={() => setModalVisible(true)}
+        onPress={() => {
+          console.log(`[Perf Tracker] 'Add Transaction' button pressed at ${new Date().toISOString()} (${Date.now()})`);
+          setModalVisible(true);
+        }}
         activeOpacity={0.85}
       >
         <Plus size={22} color={Colors.background} />

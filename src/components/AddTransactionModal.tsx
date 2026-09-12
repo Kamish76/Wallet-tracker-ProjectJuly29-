@@ -135,18 +135,21 @@ export function AddTransactionModal({
     });
   }, [visible, txType, showAccountDropdown, showCategoryDropdown]);
 
-  const selectorExpanded = !!showAccountDropdown || showCategoryDropdown;
+  const leftExpanded = showAccountDropdown === 'from';
+  const rightExpanded = showAccountDropdown === 'to' || showCategoryDropdown;
+  const selectorExpanded = leftExpanded || rightExpanded;
+
   const leftColStyle = {
-    flex: showAccountDropdown ? 1 : showCategoryDropdown ? 0 : 1,
-    opacity: showCategoryDropdown ? 0 : 1,
-    minWidth: showCategoryDropdown ? 0 : undefined,
+    flex: leftExpanded ? 1 : rightExpanded ? 0 : 1,
+    opacity: rightExpanded ? 0 : 1,
+    minWidth: rightExpanded ? 0 : undefined,
     overflow: 'hidden' as const,
     marginRight: selectorExpanded ? 0 : 6,
   };
   const rightColStyle = {
-    flex: showCategoryDropdown ? 1 : showAccountDropdown ? 0 : 1,
-    opacity: showAccountDropdown ? 0 : 1,
-    minWidth: showAccountDropdown ? 0 : undefined,
+    flex: rightExpanded ? 1 : leftExpanded ? 0 : 1,
+    opacity: leftExpanded ? 0 : 1,
+    minWidth: leftExpanded ? 0 : undefined,
     overflow: 'hidden' as const,
     marginLeft: selectorExpanded ? 0 : 6,
   };
@@ -206,6 +209,7 @@ export function AddTransactionModal({
 
   useEffect(() => {
     if (visible) {
+      console.log(`[Perf Tracker] 'AddTransactionModal' rendering visible=true at ${new Date().toISOString()} (${Date.now()})`);
       setShowAccountDropdown(null);
       setShowCategoryDropdown(false);
       if (initialType) {
@@ -228,6 +232,7 @@ export function AddTransactionModal({
   useEffect(() => {
     if (visible && orgId) {
       InteractionManager.runAfterInteractions(() => {
+        console.log(`[Perf Tracker] 'AddTransactionModal' starting background data fetch after animations at ${new Date().toISOString()} (${Date.now()})`);
         OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
         OfflineDatabase.getAccountsWithBalances(orgId).then((accBalances) => {
           const balances: Record<string, number> = {};
@@ -235,6 +240,7 @@ export function AddTransactionModal({
             balances[b.id] = b.current_balance;
           }
           setAccountBalances(balances);
+          console.log(`[Perf Tracker] 'AddTransactionModal' finished background data fetch at ${new Date().toISOString()} (${Date.now()})`);
         }).catch(() => {});
       });
     }
@@ -468,7 +474,7 @@ export function AddTransactionModal({
                 {txType === 'transfer' ? 'From' : 'Account'}
               </Text>
               <TouchableOpacity
-                style={[styles.selectorButton, !!showAccountDropdown && styles.selectorButtonActive]}
+                style={[styles.selectorButton, showAccountDropdown === 'from' && styles.selectorButtonActive]}
                 onPress={() => toggleAccountDropdown('from')}
               >
                 <Text style={styles.selectorButtonText} numberOfLines={1}>
@@ -486,7 +492,7 @@ export function AddTransactionModal({
 
               {txType === 'transfer' ? (
                 <TouchableOpacity
-                  style={[styles.selectorButton, !!showAccountDropdown && styles.selectorButtonActive]}
+                  style={[styles.selectorButton, showAccountDropdown === 'to' && styles.selectorButtonActive]}
                   onPress={() => toggleAccountDropdown('to')}
                 >
                   <Text style={styles.selectorButtonText} numberOfLines={1}>
