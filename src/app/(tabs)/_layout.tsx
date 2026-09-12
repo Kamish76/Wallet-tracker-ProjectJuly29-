@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialTopTabs } from '@/components/MaterialTopTabs';
 import { View, Text, StyleSheet } from 'react-native';
 import { LayoutDashboard, ArrowRightLeft, Wallet, Settings, Wifi, WifiOff, RefreshCw } from 'lucide-react-native';
@@ -10,6 +11,10 @@ export default function TabsLayout() {
   const [pendingCount, setPendingCount] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
+
+  const insets = useSafeAreaInsets();
+  const paddingBottom = Math.max(14, insets.bottom);
+  const tabBarHeight = 68 + paddingBottom; // base content height (72 - 14 = 58)
 
   useEffect(() => {
     const unsubscribe = SyncEngine.subscribe((count, syncing) => {
@@ -47,7 +52,7 @@ export default function TabsLayout() {
       <MaterialTopTabs
         tabBarPosition="bottom"
         screenOptions={{
-          tabBarStyle: styles.tabBar,
+          tabBarStyle: [styles.tabBar, { height: tabBarHeight, paddingBottom }],
           tabBarActiveTintColor: Colors.primary,
           tabBarInactiveTintColor: Colors.textDim,
           tabBarLabelStyle: styles.tabLabel,
@@ -134,8 +139,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    height: 72,
-    paddingBottom: 14,
     paddingTop: 8,
   },
   tabLabel: {
