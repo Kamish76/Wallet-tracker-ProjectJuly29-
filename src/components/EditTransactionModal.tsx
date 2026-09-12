@@ -492,7 +492,7 @@ export function EditTransactionModal({
                     <Text style={styles.evalText}>= {formatCurrency(evaluatedAmount, currency)}</Text>
                   )}
                 </View>
-                <TouchableOpacity onPress={() => handleKeypadPress('BACKSPACE')} style={styles.backspaceBtn}>
+                <TouchableOpacity onPress={() => handleKeypadPress('BACKSPACE')} onLongPress={() => setDisplayExpr('0')} style={styles.backspaceBtn}>
                   <Delete size={24} color={Colors.textLight} />
                 </TouchableOpacity>
               </View>
@@ -554,14 +554,14 @@ export function EditTransactionModal({
 
           {/* Floating Dropdown Lists */}
           {showAccountDropdown === 'from' && (
-              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
                 {accounts.map((a) => (
                   <TouchableOpacity
                     key={a.id}
                     style={[styles.dropdownItem, accountId === a.id && styles.dropdownItemActive]}
                     onPress={() => {
                       setAccountId(a.id);
-                      toggleAccountDropdown(null);
+                      setTimeout(() => toggleAccountDropdown(null), 50);
                     }}
                   >
                     <Text style={[styles.dropdownItemText, accountId === a.id && styles.dropdownItemTextActive]}>
@@ -576,14 +576,14 @@ export function EditTransactionModal({
           )}
 
           {showAccountDropdown === 'to' && txType === 'transfer' && (
-              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
                 {accounts.filter(a => a.id !== accountId).map((a) => (
                   <TouchableOpacity
                     key={a.id}
                     style={[styles.dropdownItem, transferToId === a.id && styles.dropdownItemActive]}
                     onPress={() => {
                       setTransferToId(a.id);
-                      toggleAccountDropdown(null);
+                      setTimeout(() => toggleAccountDropdown(null), 50);
                     }}
                   >
                     <Text style={[styles.dropdownItemText, transferToId === a.id && styles.dropdownItemTextActive]}>
@@ -598,14 +598,14 @@ export function EditTransactionModal({
           )}
 
           {showCategoryDropdown && (
-              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
                 {filteredCategories.map((cat) => (
                   <TouchableOpacity
                     key={cat.id}
                     style={[styles.dropdownItem, category === cat.display_name && styles.dropdownItemActive]}
                     onPress={() => {
                       setCategory(cat.display_name);
-                      toggleCategoryDropdown();
+                      setTimeout(() => toggleCategoryDropdown(), 50);
                     }}
                   >
                     <Text style={[styles.dropdownItemText, category === cat.display_name && styles.dropdownItemTextActive]}>
@@ -617,7 +617,7 @@ export function EditTransactionModal({
                   style={styles.dropdownItemAdd}
                   onPress={() => {
                     setShowCustomCatInput(!showCustomCatInput);
-                    toggleCategoryDropdown();
+                    setTimeout(() => toggleCategoryDropdown(), 50);
                   }}
                 >
                   <Plus size={14} color={Colors.primary} />
@@ -650,7 +650,7 @@ export function EditTransactionModal({
             </View>
           )}
 
-          <View>
+          <View pointerEvents={selectorExpanded ? 'none' : 'auto'}>
             <Text style={styles.inputLabel}>Notes (Optional)</Text>
           <TextInput
             style={styles.input}
