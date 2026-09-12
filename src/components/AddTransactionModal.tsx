@@ -132,11 +132,22 @@ export function AddTransactionModal({
   const [isAnimationReady, setIsAnimationReady] = useState(false);
   const [internalVisible, setInternalVisible] = useState(visible);
 
+  // DEBUG LOGS
   useEffect(() => {
+    console.log('[AddTransactionModal] State changed:', {
+      visible, internalVisible, txType, showAccountDropdown, showCategoryDropdown, isAnimationReady, modalHeight
+    });
+  }, [visible, internalVisible, txType, showAccountDropdown, showCategoryDropdown, isAnimationReady, modalHeight]);
+
+  useEffect(() => {
+    console.log('[AddTransactionModal] visible prop changed to:', visible);
     if (visible) {
       setInternalVisible(true);
     } else {
-      const t = setTimeout(() => setInternalVisible(false), 300);
+      const t = setTimeout(() => {
+        console.log('[AddTransactionModal] internalVisible setting to false after timeout');
+        setInternalVisible(false);
+      }, 300);
       return () => clearTimeout(t);
     }
   }, [visible]);
@@ -186,12 +197,14 @@ export function AddTransactionModal({
   }));
 
   const toggleAccountDropdown = (type: 'from' | 'to' | null) => {
+    console.log('[AddTransactionModal] toggleAccountDropdown called with:', type);
     const nextState = showAccountDropdown === type ? null : type;
     setShowAccountDropdown(nextState);
     if (nextState) setShowCategoryDropdown(false);
   };
 
   const toggleCategoryDropdown = () => {
+    console.log('[AddTransactionModal] toggleCategoryDropdown called');
     const nextState = !showCategoryDropdown;
     setShowCategoryDropdown(nextState);
     if (nextState) setShowAccountDropdown(null);
@@ -202,6 +215,7 @@ export function AddTransactionModal({
   }, [displayExpr]);
 
   const handleKeypadPress = (key: string) => {
+    console.log('[AddTransactionModal] Keypad pressed:', key, 'Current display:', displayExpr);
     if (key === '=') {
       const val = evaluateMathExpression(displayExpr);
       setDisplayExpr(String(val));
@@ -236,16 +250,29 @@ export function AddTransactionModal({
   };
 
   useEffect(() => {
-    if (visible && orgId) {
+    if (visible) {
       setModalHeight(null);
       setShowAccountDropdown(null);
       setShowCategoryDropdown(false);
       if (initialType) {
         setTxType(initialType);
       }
-      if (accounts.length > 0 && !accountId) {
-        setAccountId(accounts[0].id);
-      }
+    } else {
+      setShowCustomCatInput(false);
+      setCustomCatName('');
+      setShowAccountDropdown(null);
+      setShowCategoryDropdown(false);
+    }
+  }, [visible, initialType]);
+
+  useEffect(() => {
+    if (visible && accounts.length > 0 && !accountId) {
+      setAccountId(accounts[0].id);
+    }
+  }, [visible, accounts, accountId]);
+
+  useEffect(() => {
+    if (visible && orgId) {
       OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
       OfflineDatabase.getTransactions(orgId, 10000, 0).then((allTxs) => {
         const balances: Record<string, number> = {};
@@ -254,13 +281,8 @@ export function AddTransactionModal({
         }
         setAccountBalances(balances);
       }).catch(() => {});
-    } else {
-      setShowCustomCatInput(false);
-      setCustomCatName('');
-      setShowAccountDropdown(null);
-      setShowCategoryDropdown(false);
     }
-  }, [visible, accounts, accountId, initialType, orgId]);
+  }, [visible, orgId, accounts]);
 
   const filteredCategories = categories.filter((c) => {
     if (txType === 'income') return c.aliases?.includes('type:income');
@@ -395,6 +417,7 @@ export function AddTransactionModal({
           exiting={SlideOutDown.duration(200)}
           style={[styles.modalCard, modalHeight ? { height: modalHeight } : { maxHeight: '95%' }]}
           onLayout={(e) => {
+            console.log('[AddTransactionModal] onLayout called. Previous height:', modalHeight, 'New height:', e.nativeEvent.layout.height);
             if (!modalHeight) {
               setModalHeight(e.nativeEvent.layout.height);
             }
