@@ -205,40 +205,40 @@ export default function DashboardScreen() {
     }, [orgId, loadLocalData])
   );
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     if (!orgId) return;
     setRefreshing(true);
     await SyncEngine.syncNow(orgId);
     await loadLocalData(orgId, undefined, 0);
     setRefreshing(false);
-  };
+  }, [orgId, loadLocalData]);
 
-  const handlePrevMonth = () => {
+  const handlePrevMonth = useCallback(() => {
     const newMonth = new Date(currentMonth);
     newMonth.setMonth(newMonth.getMonth() - 1);
     setCurrentMonth(newMonth);
     if (orgId) loadLocalData(orgId, newMonth, 0);
-  };
+  }, [currentMonth, orgId, loadLocalData]);
 
-  const handleNextMonth = () => {
+  const handleNextMonth = useCallback(() => {
     const newMonth = new Date(currentMonth);
     newMonth.setMonth(newMonth.getMonth() + 1);
     setCurrentMonth(newMonth);
     if (orgId) loadLocalData(orgId, newMonth, 0);
-  };
+  }, [currentMonth, orgId, loadLocalData]);
 
-  const handleLoadMore = async () => {
+  const handleLoadMore = useCallback(async () => {
     if (!hasMore || isFetchingMore || !orgId) return;
     setIsFetchingMore(true);
     await loadLocalData(orgId, undefined, offset);
     setIsFetchingMore(false);
-  };
+  }, [hasMore, isFetchingMore, orgId, offset, loadLocalData]);
 
   const monthLabel = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   // Total balance is now calculated accurately using all transactions in loadLocalData
 
-  const renderHeader = () => (
+  const headerElement = (
     <>
       {/* Header */}
       <View style={styles.header}>
@@ -333,7 +333,7 @@ export default function DashboardScreen() {
             tintColor={Colors.primary}
           />
         }
-        ListHeaderComponent={renderHeader}
+        ListHeaderComponent={headerElement}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.5}
         ListEmptyComponent={

@@ -127,6 +127,13 @@ export function AddTransactionModal({
   const [accountBalances, setAccountBalances] = useState<Record<string, number>>({});
   const [showAccountDropdown, setShowAccountDropdown] = useState<'from' | 'to' | null>(null);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [prevInitialType, setPrevInitialType] = useState(initialType);
+
+  // Sync initialType without triggering a second render pass during animation
+  if (initialType !== prevInitialType) {
+    setPrevInitialType(initialType);
+    if (initialType) setTxType(initialType);
+  }
 
   // DEBUG LOGGING
   useEffect(() => {
@@ -210,18 +217,17 @@ export function AddTransactionModal({
   useEffect(() => {
     if (visible) {
       console.log(`[Perf Tracker] 'AddTransactionModal' rendering visible=true at ${new Date().toISOString()} (${Date.now()})`);
-      setShowAccountDropdown(null);
-      setShowCategoryDropdown(false);
-      if (initialType) {
-        setTxType(initialType);
-      }
     } else {
       setShowCustomCatInput(false);
       setCustomCatName('');
       setShowAccountDropdown(null);
       setShowCategoryDropdown(false);
+      setDisplayExpr('0');
+      setCategory('');
+      setNotes('');
+      setTransferToId('');
     }
-  }, [visible, initialType]);
+  }, [visible]);
 
   useEffect(() => {
     if (visible && accounts.length > 0 && !accountId) {
