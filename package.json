@@ -16,7 +16,7 @@
     "@react-navigation/material-top-tabs": "^7.6.17",
     "@supabase/supabase-js": "^2.45.0",
     "expo": "~54.0.37",
-    "expo-background-fetch": "~14.0.9",
+    "expo-background-task": "~1.0.10",
     "expo-constants": "~18.0.14",
     "expo-linking": "~8.0.12",
     "expo-router": "~6.0.24",
