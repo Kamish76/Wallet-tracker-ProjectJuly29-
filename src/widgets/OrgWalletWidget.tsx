@@ -66,7 +66,7 @@ export function OrgWalletWidget({
         }}
         clickAction="OPEN_URI"
         clickActionData={{
-          uri: 'orgwallet://dashboard',
+          uri: 'orgwallet://home',
         }}
       >
         <TextWidget
@@ -107,7 +107,7 @@ export function OrgWalletWidget({
           }}
           clickAction="OPEN_URI"
           clickActionData={{
-            uri: 'orgwallet://dashboard?type=expense_personal',
+            uri: 'orgwallet://add-transaction?type=expense_personal',
           }}
         >
           <TextWidget
@@ -133,7 +133,7 @@ export function OrgWalletWidget({
           }}
           clickAction="OPEN_URI"
           clickActionData={{
-            uri: 'orgwallet://dashboard?type=income',
+            uri: 'orgwallet://add-transaction?type=income',
           }}
         >
           <TextWidget
@@ -159,7 +159,7 @@ export function OrgWalletWidget({
           }}
           clickAction="OPEN_URI"
           clickActionData={{
-            uri: 'orgwallet://dashboard?type=transfer',
+            uri: 'orgwallet://add-transaction?type=transfer',
           }}
         >
           <TextWidget

@@ -64,7 +64,6 @@ export default function DashboardScreen() {
     ) {
       setInitialModalTxType(paramTxType as TransactionType);
       setModalVisible(true);
-      router.setParams({ type: undefined });
     }
   }, [paramTxType]);
 
