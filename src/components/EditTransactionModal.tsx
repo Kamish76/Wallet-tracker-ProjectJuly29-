@@ -18,7 +18,6 @@ import { generateUUID } from '@/lib/utils/uuid';
 import { WidgetService } from '@/lib/widget/widgetService';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
-import { calculateAccountBalance } from '@/lib/utils/balance';
 import { formatCurrency } from '@/lib/utils/currency';
 import type { WalletAccount, WalletTransaction, TransactionType, WalletCategory } from '@/types/wallet';
 
@@ -64,10 +63,10 @@ export function EditTransactionModal({
       setCategory(transaction.category ?? '');
       setNotes(transaction.description ?? '');
       OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
-      OfflineDatabase.getTransactions(orgId, 10000, 0).then((allTxs) => {
+      OfflineDatabase.getAccountsWithBalances(orgId).then((accBalances) => {
         const balances: Record<string, number> = {};
-        for (const acc of accounts) {
-          balances[acc.id] = calculateAccountBalance(acc, allTxs).current_balance;
+        for (const b of accBalances) {
+          balances[b.id] = b.current_balance;
         }
         setAccountBalances(balances);
       }).catch(() => {});

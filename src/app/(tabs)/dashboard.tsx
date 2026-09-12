@@ -23,7 +23,6 @@ import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import * as Linking from 'expo-linking';
 import {
-  calculateTotalNetBalance,
   getAccountBadgeText,
 } from '@/lib/utils/balance';
 import { formatCurrency } from '@/lib/utils/currency';
@@ -151,9 +150,9 @@ export default function DashboardScreen() {
       setMonthlyIncome(totals.income);
       setMonthlyExpense(totals.expense);
 
-      // Fetch all transactions to compute the true total net balance exactly like the Widget
-      const allTxsForBalance = await OfflineDatabase.getTransactions(organizationId, 10000, 0);
-      const computedBalance = calculateTotalNetBalance(localAccs, allTxsForBalance);
+      // Fetch all pre-aggregated balances to compute the true total net balance
+      const accBalances = await OfflineDatabase.getAccountsWithBalances(organizationId);
+      const computedBalance = accBalances.reduce((sum, b) => sum + (b.current_balance || 0), 0);
       setTotalNetBalance(computedBalance);
 
       if (currentOffset === 0) {

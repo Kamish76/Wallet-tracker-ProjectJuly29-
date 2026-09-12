@@ -162,6 +162,44 @@ export class OfflineDatabase {
     });
   }
 
+  public static async getAccountsWithBalances(organizationId: string, includeArchived = false): Promise<any[]> {
+    return this.withLock(async () => {
+      const db = await this.getDb();
+      const condition = includeArchived ? '' : ' AND a.is_active = 1';
+      const sql = `
+        SELECT 
+          a.id, a.organization_id, a.name, a.starting_value, a.is_active, a.created_at, a.updated_at,
+          COALESCE(SUM(
+            CASE 
+              WHEN t.type = 'income' THEN ABS(t.amount)
+              WHEN t.type IN ('expense_business', 'expense_personal', 'expense', 'transfer') AND t.account_id = a.id THEN -ABS(t.amount)
+              WHEN t.type = 'transfer' AND t.transfer_to_account_id = a.id THEN ABS(t.amount)
+              ELSE 0
+            END
+          ), 0) as balance_delta,
+          COUNT(t.id) as transaction_count
+        FROM local_accounts a
+        LEFT JOIN local_transactions t 
+          ON (t.account_id = a.id OR (t.type = 'transfer' AND t.transfer_to_account_id = a.id))
+          AND t.organization_id = a.organization_id
+        WHERE a.organization_id = ? ${condition}
+        GROUP BY a.id
+        ORDER BY a.is_active DESC, a.name ASC;
+      `;
+      const rows = await db.getAllAsync<any>(sql, [organizationId ?? null]);
+      return rows.map((r) => ({
+        id: r.id,
+        organization_id: r.organization_id,
+        name: r.name,
+        starting_value: r.starting_value,
+        is_active: Boolean(r.is_active),
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        current_balance: Number(r.starting_value || 0) + Number(r.balance_delta || 0),
+        transaction_count: r.transaction_count,
+      }));
+    });
+  }
   public static async deleteAccount(id: string, organizationId: string): Promise<void> {
     return this.withLock(async () => {
       const db = await this.getDb();
