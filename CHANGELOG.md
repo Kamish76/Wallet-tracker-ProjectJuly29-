@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [0.4.4] - Performance & UI Refinement Release (2026-09-13)
+
+### 🚀 New Features & Enhancements
+- **Edit Transaction Modal Overhaul**: Rebuilt the Edit Transaction modal to perfectly match the sleek design of the Add Transaction modal, including the floating dropdowns, custom keypad, and math expression evaluation.
+- **Deep Link Navigation**: Introduced dedicated redirect routes (`/src/app/home.tsx`, `/src/app/add-transaction.tsx`) for the Android home screen widget deep links to bypass router fallback errors during cold starts.
+- **Keypad Reset**: Added a long-press gesture to the backspace button in the transaction modals to instantly clear the entire amount.
+
+### 🛠 Fixes & Refactoring
+- **Ghost Clicks on Android**: Fixed a layout bug where tapping a floating dropdown item would pass through to the inputs underneath. Resolved by adding `elevation` and `pointerEvents` locking while dropdowns are expanded, as well as a micro-delay (`setTimeout`) to properly resolve touch gestures.
+- **List Optimization**: Optimized Dashboard and Transactions screen rendering using `useCallback` and SQL aggregation, significantly reducing rendering lag when opening the app or modals.
+- **Background Sync Deprecation**: Migrated from the deprecated `expo-background-fetch` library to the modern `expo-background-task`.
+- **Circular Dependencies**: Resolved a startup warning regarding circular dependencies between `SyncEngine.ts` and `WidgetService.ts` by using dynamic imports.
+- **Vulnerability Fixes**: Resolved multiple `npm audit` high/moderate security vulnerabilities (xmldom, brace-expansion, js-yaml, nanoid) by updating dependencies via `npm audit fix --legacy-peer-deps`.
+
+---
+
 ## [0.4.3] - Web Support and Dynamic Currency (2026-09-12)
 
 ### 🚀 New Features & Enhancements

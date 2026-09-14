@@ -23,7 +23,6 @@ import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import * as Linking from 'expo-linking';
 import {
-  calculateTotalNetBalance,
   getAccountBadgeText,
 } from '@/lib/utils/balance';
 import { formatCurrency } from '@/lib/utils/currency';
@@ -57,41 +56,6 @@ export default function DashboardScreen() {
     return { start, end };
   };
 
-  const handleEditTransaction = (tx: WalletTransaction) => {
-    setSelectedTx(tx);
-    setEditModalVisible(true);
-  };
-
-  const handleDeleteConfirm = (tx: WalletTransaction) => {
-    if (!orgId) return;
-    Alert.alert(
-      'Delete Transaction',
-      `Delete ${tx.category || 'this transaction'} of $${Number(tx.amount).toFixed(2)}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await OfflineDatabase.deleteTransaction(tx.id, orgId);
-              await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', {
-                id: tx.id,
-                organization_id: orgId,
-              });
-              if (SyncEngine.getOnlineStatus()) {
-                SyncEngine.syncNow(orgId).catch(() => {});
-              }
-              await loadLocalData(orgId, undefined, 0);
-            } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to delete transaction.');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   useEffect(() => {
     if (
       paramTxType === 'expense_personal' ||
@@ -100,7 +64,6 @@ export default function DashboardScreen() {
     ) {
       setInitialModalTxType(paramTxType as TransactionType);
       setModalVisible(true);
-      router.setParams({ type: undefined });
     }
   }, [paramTxType]);
 
@@ -151,9 +114,9 @@ export default function DashboardScreen() {
       setMonthlyIncome(totals.income);
       setMonthlyExpense(totals.expense);
 
-      // Fetch all transactions to compute the true total net balance exactly like the Widget
-      const allTxsForBalance = await OfflineDatabase.getTransactions(organizationId, 10000, 0);
-      const computedBalance = calculateTotalNetBalance(localAccs, allTxsForBalance);
+      // Fetch all pre-aggregated balances to compute the true total net balance
+      const accBalances = await OfflineDatabase.getAccountsWithBalances(organizationId);
+      const computedBalance = accBalances.reduce((sum, b) => sum + (b.current_balance || 0), 0);
       setTotalNetBalance(computedBalance);
 
       if (currentOffset === 0) {
@@ -186,7 +149,43 @@ export default function DashboardScreen() {
     init();
   }, []); // Remove loadLocalData dependency to prevent re-running init on month change
 
-  // 1. Subscribe to SyncEngine notifications so Dashboard updates automatically after sync
+  // 1. Subscribe to SyncEngine notifications so transactions update automatically after sync
+
+  const handleEditTransaction = useCallback((tx: WalletTransaction) => {
+    setSelectedTx(tx);
+    setEditModalVisible(true);
+  }, []);
+
+  const handleDeleteConfirm = useCallback((tx: WalletTransaction) => {
+    if (!orgId) return;
+    Alert.alert(
+      'Delete Transaction',
+      `Delete ${tx.category || 'this transaction'} of $${Number(tx.amount).toFixed(2)}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await OfflineDatabase.deleteTransaction(tx.id, orgId);
+              await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', {
+                id: tx.id,
+                organization_id: orgId,
+              });
+              if (SyncEngine.getOnlineStatus()) {
+                SyncEngine.syncNow(orgId).catch(() => {});
+              }
+              await loadLocalData(orgId, undefined, 0);
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to delete transaction.');
+            }
+          },
+        },
+      ]
+    );
+  }, [orgId, loadLocalData]);
+
   useEffect(() => {
     const unsubscribe = SyncEngine.subscribe((queueCount, isSyncing) => {
       if (!isSyncing && orgId) {
@@ -205,40 +204,40 @@ export default function DashboardScreen() {
     }, [orgId, loadLocalData])
   );
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     if (!orgId) return;
     setRefreshing(true);
     await SyncEngine.syncNow(orgId);
     await loadLocalData(orgId, undefined, 0);
     setRefreshing(false);
-  };
+  }, [orgId, loadLocalData]);
 
-  const handlePrevMonth = () => {
+  const handlePrevMonth = useCallback(() => {
     const newMonth = new Date(currentMonth);
     newMonth.setMonth(newMonth.getMonth() - 1);
     setCurrentMonth(newMonth);
     if (orgId) loadLocalData(orgId, newMonth, 0);
-  };
+  }, [currentMonth, orgId, loadLocalData]);
 
-  const handleNextMonth = () => {
+  const handleNextMonth = useCallback(() => {
     const newMonth = new Date(currentMonth);
     newMonth.setMonth(newMonth.getMonth() + 1);
     setCurrentMonth(newMonth);
     if (orgId) loadLocalData(orgId, newMonth, 0);
-  };
+  }, [currentMonth, orgId, loadLocalData]);
 
-  const handleLoadMore = async () => {
+  const handleLoadMore = useCallback(async () => {
     if (!hasMore || isFetchingMore || !orgId) return;
     setIsFetchingMore(true);
     await loadLocalData(orgId, undefined, offset);
     setIsFetchingMore(false);
-  };
+  }, [hasMore, isFetchingMore, orgId, offset, loadLocalData]);
 
   const monthLabel = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   // Total balance is now calculated accurately using all transactions in loadLocalData
 
-  const renderHeader = () => (
+  const headerElement = (
     <>
       {/* Header */}
       <View style={styles.header}>
@@ -333,7 +332,7 @@ export default function DashboardScreen() {
             tintColor={Colors.primary}
           />
         }
-        ListHeaderComponent={renderHeader}
+        ListHeaderComponent={headerElement}
         onEndReached={handleLoadMore}
         onEndReachedThreshold={0.5}
         ListEmptyComponent={
@@ -372,7 +371,10 @@ export default function DashboardScreen() {
       {/* Floating Add Transaction Button (FAB) at bottom-right */}
       <TouchableOpacity
         style={styles.fabButton}
-        onPress={() => setModalVisible(true)}
+        onPress={() => {
+          console.log(`[Perf Tracker] 'Add Transaction' button pressed at ${new Date().toISOString()} (${Date.now()})`);
+          setModalVisible(true);
+        }}
         activeOpacity={0.85}
       >
         <Plus size={22} color={Colors.background} />

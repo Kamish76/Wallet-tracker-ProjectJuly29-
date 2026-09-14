@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,17 +8,87 @@ import {
   Alert,
   StyleSheet,
   ScrollView,
+  InteractionManager,
 } from 'react-native';
-import { X, Plus, Trash2 } from 'lucide-react-native';
+import { X, Plus, Delete, Trash2, AlertCircle, ChevronDown } from 'lucide-react-native';
+
+// Safely evaluates arithmetic expressions without eval()
+function evaluateMathExpression(expr: string): number {
+  try {
+    let clean = expr
+      .replace(/×/g, '*')
+      .replace(/÷/g, '/')
+      .replace(/[^0-9+\-*/.]/g, '');
+
+    // Allow leading negative sign
+    if (clean.startsWith('-')) {
+      clean = '0' + clean;
+    }
+
+    if (!clean || /^[^0-9(]/.test(clean)) return 0;
+
+    const tokens: (number | string)[] = [];
+    let curNum = '';
+    for (const char of clean) {
+      if ('+-*/'.includes(char)) {
+        if (curNum !== '') {
+          tokens.push(parseFloat(curNum));
+          curNum = '';
+        }
+        tokens.push(char);
+      } else {
+        curNum += char;
+      }
+    }
+    if (curNum !== '') {
+      tokens.push(parseFloat(curNum));
+    }
+
+    if (tokens.length === 0) return 0;
+    if (tokens.length === 1 && typeof tokens[0] === 'number') return tokens[0];
+
+    const pass1: (number | string)[] = [];
+    let i = 0;
+    while (i < tokens.length) {
+      const token = tokens[i];
+      if (token === '*' || token === '/') {
+        const prev = pass1.pop() as number;
+        const next = (tokens[i + 1] ?? 1) as number;
+        if (token === '*') {
+          pass1.push(prev * next);
+        } else {
+          pass1.push(next === 0 ? 0 : prev / next);
+        }
+        i += 2;
+      } else {
+        pass1.push(token);
+        i++;
+      }
+    }
+
+    let result = (pass1[0] as number) || 0;
+    i = 1;
+    while (i < pass1.length) {
+      const op = pass1[i];
+      const val = (pass1[i + 1] ?? 0) as number;
+      if (op === '+') result += val;
+      else if (op === '-') result -= val;
+      i += 2;
+    }
+
+    return isNaN(result) ? 0 : Number(result.toFixed(2));
+  } catch {
+    return 0;
+  }
+}
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { Colors } from '@/theme/colors';
 import { Tokens } from '@/theme/tokens';
 import { generateUUID } from '@/lib/utils/uuid';
-import { WidgetService } from '@/lib/widget/widgetService';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
-import { calculateAccountBalance } from '@/lib/utils/balance';
+import { WidgetService } from '@/lib/widget/widgetService';
 import { formatCurrency } from '@/lib/utils/currency';
 import type { WalletAccount, WalletTransaction, TransactionType, WalletCategory } from '@/types/wallet';
 
@@ -43,8 +113,9 @@ export function EditTransactionModal({
   transaction,
   currency = 'USD',
 }: EditTransactionModalProps) {
+  if (!transaction && visible) return null;
   const [txType, setTxType] = useState<TransactionType>('expense_personal');
-  const [amount, setAmount] = useState('');
+  const [displayExpr, setDisplayExpr] = useState('0');
   const [accountId, setAccountId] = useState('');
   const [transferToId, setTransferToId] = useState('');
   const [category, setCategory] = useState('');
@@ -52,30 +123,136 @@ export function EditTransactionModal({
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState<WalletCategory[]>([]);
   const [showCustomCatInput, setShowCustomCatInput] = useState(false);
+  const inputRef = useRef<TextInput>(null);
   const [customCatName, setCustomCatName] = useState('');
   const [accountBalances, setAccountBalances] = useState<Record<string, number>>({});
+  const [showAccountDropdown, setShowAccountDropdown] = useState<'from' | 'to' | null>(null);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  
 
+  // DEBUG LOGGING
   useEffect(() => {
-    if (visible && orgId && transaction) {
+    console.log('[AddTransactionModal] State changed:', {
+      visible, txType, showAccountDropdown, showCategoryDropdown
+    });
+  }, [visible, txType, showAccountDropdown, showCategoryDropdown]);
+
+  const leftExpanded = showAccountDropdown === 'from';
+  const rightExpanded = showAccountDropdown === 'to' || showCategoryDropdown;
+  const selectorExpanded = leftExpanded || rightExpanded;
+
+  const leftColStyle = {
+    flex: leftExpanded ? 1 : rightExpanded ? 0 : 1,
+    opacity: rightExpanded ? 0 : 1,
+    minWidth: rightExpanded ? 0 : undefined,
+    overflow: 'hidden' as const,
+    marginRight: selectorExpanded ? 0 : 6,
+  };
+  const rightColStyle = {
+    flex: rightExpanded ? 1 : leftExpanded ? 0 : 1,
+    opacity: leftExpanded ? 0 : 1,
+    minWidth: leftExpanded ? 0 : undefined,
+    overflow: 'hidden' as const,
+    marginLeft: selectorExpanded ? 0 : 6,
+  };
+
+  const toggleAccountDropdown = (type: 'from' | 'to' | null) => {
+    console.log('[AddTransactionModal] toggleAccountDropdown called with:', type);
+    const nextState = showAccountDropdown === type ? null : type;
+    setShowAccountDropdown(nextState);
+    if (nextState) setShowCategoryDropdown(false);
+  };
+
+  const toggleCategoryDropdown = () => {
+    console.log('[AddTransactionModal] toggleCategoryDropdown called');
+    const nextState = !showCategoryDropdown;
+    setShowCategoryDropdown(nextState);
+    if (nextState) setShowAccountDropdown(null);
+  };
+
+  const evaluatedAmount = useMemo(() => {
+    return evaluateMathExpression(displayExpr);
+  }, [displayExpr]);
+
+  const handleKeypadPress = (key: string) => {
+    console.log('[AddTransactionModal] Keypad pressed:', key, 'Current display:', displayExpr);
+    if (key === '=') {
+      const val = evaluateMathExpression(displayExpr);
+      setDisplayExpr(String(val));
+      return;
+    }
+    if (key === 'BACKSPACE') {
+      if (displayExpr.length <= 1) {
+        setDisplayExpr('0');
+      } else {
+        setDisplayExpr(displayExpr.slice(0, -1));
+      }
+      return;
+    }
+    if (displayExpr === '0') {
+      if ('0123456789'.includes(key)) {
+        setDisplayExpr(key);
+      } else if (key === '-') {
+        setDisplayExpr('-');
+      } else {
+        setDisplayExpr('0' + key);
+      }
+    } else {
+      const lastChar = displayExpr.slice(-1);
+      const isOp = '+-×÷.'.includes(key);
+      const lastIsOp = '+-×÷.'.includes(lastChar);
+      if (isOp && lastIsOp) {
+        setDisplayExpr(displayExpr.slice(0, -1) + key);
+      } else {
+        setDisplayExpr(displayExpr + key);
+      }
+    }
+  };
+
+  
+  useEffect(() => {
+    if (visible && transaction) {
       setTxType(transaction.type);
-      setAmount(String(transaction.amount ?? ''));
+      setDisplayExpr(String(transaction.amount ?? '0'));
       setAccountId(transaction.account_id ?? (accounts[0]?.id || ''));
       setTransferToId(transaction.transfer_to_account_id ?? '');
       setCategory(transaction.category ?? '');
       setNotes(transaction.description ?? '');
-      OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
-      OfflineDatabase.getTransactions(orgId, 10000, 0).then((allTxs) => {
-        const balances: Record<string, number> = {};
-        for (const acc of accounts) {
-          balances[acc.id] = calculateAccountBalance(acc, allTxs).current_balance;
-        }
-        setAccountBalances(balances);
-      }).catch(() => {});
     } else {
       setShowCustomCatInput(false);
       setCustomCatName('');
+      setShowAccountDropdown(null);
+      setShowCategoryDropdown(false);
+      setDisplayExpr('0');
+      setCategory('');
+      setNotes('');
+      setTransferToId('');
     }
-  }, [visible, transaction, accounts, orgId]);
+  }, [visible, transaction, accounts]);
+
+
+  useEffect(() => {
+    if (visible && accounts.length > 0 && !accountId) {
+      setAccountId(accounts[0].id);
+    }
+  }, [visible, accounts, accountId]);
+
+  useEffect(() => {
+    if (visible && orgId) {
+      InteractionManager.runAfterInteractions(() => {
+        console.log(`[Perf Tracker] 'AddTransactionModal' starting background data fetch after animations at ${new Date().toISOString()} (${Date.now()})`);
+        OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
+        OfflineDatabase.getAccountsWithBalances(orgId).then((accBalances) => {
+          const balances: Record<string, number> = {};
+          for (const b of accBalances) {
+            balances[b.id] = b.current_balance;
+          }
+          setAccountBalances(balances);
+          console.log(`[Perf Tracker] 'AddTransactionModal' finished background data fetch at ${new Date().toISOString()} (${Date.now()})`);
+        }).catch(() => {});
+      });
+    }
+  }, [visible, orgId, accounts]);
 
   const filteredCategories = categories.filter((c) => {
     if (txType === 'income') return c.aliases?.includes('type:income');
@@ -126,13 +303,24 @@ export function EditTransactionModal({
     setShowCustomCatInput(false);
   };
 
+  const resetForm = () => {
+    setDisplayExpr('0');
+    setCategory('');
+    setNotes('');
+    setTransferToId('');
+    setShowCustomCatInput(false);
+    setCustomCatName('');
+  };
+
+  
   const handleSaveTransaction = async () => {
     if (!orgId || !userId || !transaction) return;
-    const amountValidation = SecurityService.validateAmount(amount, { min: 0.01 });
-    if (!amountValidation.isValid) {
-      Alert.alert('Invalid Amount', amountValidation.error || 'Please enter a valid amount.');
+    const evaluatedAmount = evaluateMathExpression(displayExpr);
+    if (evaluatedAmount === 0) {
+      Alert.alert('Invalid Amount', 'Transaction amount cannot be 0.');
       return;
     }
+    const finalAmount = Math.abs(evaluatedAmount);
     if (!accountId) {
       Alert.alert('No Account', 'Please select a wallet sub-account.');
       return;
@@ -147,20 +335,13 @@ export function EditTransactionModal({
 
     setSaving(true);
     try {
-      const rateStatus = await RateLimiter.checkLimit(
-        'mutation:create',
-        RateLimitPolicies.MUTATION_CREATE
-      );
-      if (!rateStatus.allowed) {
-        Alert.alert('Rate Limit Exceeded', `Please try again in ${rateStatus.retryAfterSeconds}s.`);
-        return;
-      }
+      await RateLimiter.assertAllowed('mutation:create', RateLimitPolicies.MUTATION_CREATE);
       await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
 
       const updatedTx: WalletTransaction = {
         ...transaction,
         type: txType,
-        amount: amountValidation.value,
+        amount: finalAmount,
         account_id: accountId,
         transfer_to_account_id: txType === 'transfer' ? (transferToId || null) : null,
         category: SecurityService.sanitizeText(category, 60) || null,
@@ -168,20 +349,15 @@ export function EditTransactionModal({
         sync_status: 'pending',
       };
 
-      // 1. Write immediately to local SQLite for instant offline reactivity
       await OfflineDatabase.upsertTransaction(updatedTx, 'pending');
-
-      // 2. Enqueue mutation in offline sync queue
       await OfflineDatabase.enqueueMutation('UPDATE_TRANSACTION', updatedTx);
 
-      // 3. Trigger background sync if online
       if (SyncEngine.getOnlineStatus()) {
         SyncEngine.syncNow(orgId).catch(() => {});
       }
-
-      // 4. Update Android home screen widget immediately
       WidgetService.refreshWidgetData(orgId || undefined).catch(() => {});
 
+      resetForm();
       onSuccess();
       onClose();
     } catch (e: any) {
@@ -204,17 +380,7 @@ export function EditTransactionModal({
           onPress: async () => {
             setSaving(true);
             try {
-              const rateStatus = await RateLimiter.checkLimit(
-                'mutation:create',
-                RateLimitPolicies.MUTATION_CREATE
-              );
-              if (!rateStatus.allowed) {
-                Alert.alert(
-                  'Rate Limit Exceeded',
-                  `Please try again in ${rateStatus.retryAfterSeconds}s.`
-                );
-                return;
-              }
+              await RateLimiter.assertAllowed('mutation:create', RateLimitPolicies.MUTATION_CREATE);
               await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
 
               await OfflineDatabase.deleteTransaction(transaction.id, orgId);
@@ -226,7 +392,6 @@ export function EditTransactionModal({
               if (SyncEngine.getOnlineStatus()) {
                 SyncEngine.syncNow(orgId).catch(() => {});
               }
-
               WidgetService.refreshWidgetData(orgId || undefined).catch(() => {});
 
               onSuccess();
@@ -242,20 +407,23 @@ export function EditTransactionModal({
     );
   };
 
-  if (!transaction) return null;
-
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
-        <View style={styles.modalCard}>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Transaction</Text>
-              <TouchableOpacity onPress={onClose}>
-                <X size={22} color={Colors.textMuted} />
-              </TouchableOpacity>
-            </View>
+        <View style={[styles.modalCard, { maxHeight: '95%' }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Edit Transaction</Text>
+            <TouchableOpacity
+              onPress={() => {
+                resetForm();
+                onClose();
+              }}
+            >
+              <X size={22} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </View>
 
+          <ScrollView style={[styles.formScroll, { flexShrink: 1 }]} showsVerticalScrollIndicator={true}>
             {/* Type Selector */}
             <View style={styles.typeSelectorRow}>
               {(
@@ -285,163 +453,265 @@ export function EditTransactionModal({
               ))}
             </View>
 
-            <Text style={styles.inputLabel}>Amount ($)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="0.00"
-              placeholderTextColor={Colors.textDim}
-              keyboardType="decimal-pad"
-              value={amount}
-              onChangeText={setAmount}
-            />
-
-            <Text style={styles.inputLabel}>Sub-Account</Text>
-            <View style={styles.accountPickerRow}>
-              {accounts.length === 0 ? (
-                <Text style={{ color: Colors.textMuted, fontStyle: 'italic' }}>
-                  No sub-accounts found. Create one in the Accounts tab!
-                </Text>
-              ) : (
-                accounts.map((a) => (
-                  <TouchableOpacity
-                    key={a.id}
-                    style={[
-                      styles.accPill,
-                      accountId === a.id && styles.accPillActive,
-                    ]}
-                    onPress={() => setAccountId(a.id)}
-                  >
-                    <Text
-                      style={[
-                        styles.accPillText,
-                        accountId === a.id && styles.accPillTextActive,
-                      ]}
-                    >
-                      {a.name} • {formatCurrency(accountBalances[a.id] || 0, currency)}
-                    </Text>
-                  </TouchableOpacity>
-                ))
+            {/* Display Area */}
+            <TouchableOpacity activeOpacity={1} onPress={() => inputRef.current?.focus()} style={styles.displayArea}>
+              <TextInput
+                ref={inputRef}
+                autoFocus
+                showSoftInputOnFocus={false}
+                caretHidden
+                style={{ position: 'absolute', width: 0, height: 0, opacity: 0 }}
+                onKeyPress={(e) => {
+                  const key = e.nativeEvent.key;
+                  if (key >= '0' && key <= '9') {
+                    handleKeypadPress(key);
+                  } else if (key === '+' || key === '-') {
+                    handleKeypadPress(key);
+                  } else if (key === '*') {
+                    handleKeypadPress('×');
+                  } else if (key === '/') {
+                    handleKeypadPress('÷');
+                  } else if (key === '.') {
+                    handleKeypadPress('.');
+                  } else if (key === 'Enter' || key === '=') {
+                    handleKeypadPress('=');
+                  } else if (key === 'Backspace') {
+                    handleKeypadPress('BACKSPACE');
+                  }
+                }}
+              />
+              <View style={styles.displayRow}>
+                <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 12 }}>
+                  <Text style={[
+                    styles.displayText,
+                    txType === 'income' ? { color: Colors.success } : txType === 'expense_personal' ? { color: Colors.error } : { color: Colors.offline }
+                  ]}>
+                    {displayExpr}
+                  </Text>
+                  {displayExpr.match(/[+\-×÷]/) && (
+                    <Text style={styles.evalText}>= {formatCurrency(evaluatedAmount, currency)}</Text>
+                  )}
+                </View>
+                <TouchableOpacity onPress={() => handleKeypadPress('BACKSPACE')} onLongPress={() => setDisplayExpr('0')} style={styles.backspaceBtn}>
+                  <Delete size={24} color={Colors.textLight} />
+                </TouchableOpacity>
+              </View>
+              {evaluatedAmount < 0 && (
+                <View style={styles.warningRow}>
+                  <AlertCircle size={14} color={Colors.offline} />
+                  <Text style={styles.warningText}>Negative result will be recorded as a positive value</Text>
+                </View>
               )}
+            </TouchableOpacity>
+
+          <View style={{ zIndex: 100, elevation: 100, position: 'relative' }}>
+            <View style={[styles.selectorsRow, { gap: 0 }]}>
+            {/* LEFT SELECTOR: Account (or From Account) */}
+            <View style={[styles.selectorCol, leftColStyle]}>
+              <Text style={styles.selectorLabel} numberOfLines={1}>
+                {txType === 'transfer' ? 'From' : 'Account'}
+              </Text>
+              <TouchableOpacity
+                style={[styles.selectorButton, showAccountDropdown === 'from' && styles.selectorButtonActive]}
+                onPress={() => toggleAccountDropdown('from')}
+              >
+                <Text style={styles.selectorButtonText} numberOfLines={1}>
+                  {accounts.find(a => a.id === accountId)?.name || 'Select Account'}
+                </Text>
+                <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
+              </TouchableOpacity>
             </View>
 
-            {txType === 'transfer' && (
-              <>
-                <Text style={styles.inputLabel}>Transfer To</Text>
-                <View style={styles.accountPickerRow}>
-                  {accounts
-                    .filter((a) => a.id !== accountId)
-                    .map((a) => (
-                      <TouchableOpacity
-                        key={a.id}
-                        style={[
-                          styles.accPill,
-                          transferToId === a.id && styles.accPillActive,
-                        ]}
-                        onPress={() => setTransferToId(a.id)}
-                      >
-                        <Text
-                          style={[
-                            styles.accPillText,
-                            transferToId === a.id && styles.accPillTextActive,
-                          ]}
-                        >
-                          {a.name} • {formatCurrency(accountBalances[a.id] || 0, currency)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                </View>
-              </>
-            )}
-
-            {txType !== 'transfer' && (
-              <>
-                <Text style={styles.inputLabel}>Category</Text>
-                <View style={styles.categoryPillsContainer}>
-                  {filteredCategories.map((cat) => {
-                    const isSelected = category === cat.display_name;
-                    return (
-                      <TouchableOpacity
-                        key={cat.id}
-                        style={[
-                          styles.categoryPill,
-                          isSelected && styles.categoryPillSelected,
-                        ]}
-                        onPress={() => setCategory(cat.display_name)}
-                      >
-                        <Text
-                          style={[
-                            styles.categoryPillText,
-                            isSelected && styles.categoryPillTextSelected,
-                          ]}
-                        >
-                          {cat.display_name}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-
-                  <TouchableOpacity
-                    style={styles.addCategoryPill}
-                    onPress={() => setShowCustomCatInput(!showCustomCatInput)}
-                  >
-                    <Plus size={14} color={Colors.primary} />
-                    <Text style={styles.addCategoryPillText}>+ Custom</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {showCustomCatInput && (
-                  <View style={styles.customCategoryRow}>
-                    <TextInput
-                      style={styles.customCategoryInput}
-                      placeholder="Enter custom category name..."
-                      placeholderTextColor={Colors.textDim}
-                      value={customCatName}
-                      onChangeText={setCustomCatName}
-                      maxLength={60}
-                    />
-                    <TouchableOpacity
-                      style={[
-                        styles.customCategoryAddBtn,
-                        !customCatName.trim() && { opacity: 0.4 },
-                      ]}
-                      onPress={handleCreateCustomCategory}
-                      disabled={!customCatName.trim()}
-                    >
-                      <Text style={styles.customCategoryAddBtnText}>Add</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </>
-            )}
-
-            <Text style={styles.inputLabel}>Notes (Optional)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Optional notes..."
-              placeholderTextColor={Colors.textDim}
-              value={notes}
-              onChangeText={setNotes}
-            />
-
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleSaveTransaction}
-              disabled={saving}
-            >
-              <Text style={styles.saveButtonText}>
-                {saving ? 'Saving...' : 'Save Changes'}
+            {/* RIGHT SELECTOR: Category OR To Account */}
+            <View style={[styles.selectorCol, rightColStyle]}>
+              <Text style={styles.selectorLabel} numberOfLines={1}>
+                {txType === 'transfer' ? 'To' : 'Category'}
               </Text>
-            </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={handleDeleteTransaction}
-              disabled={saving}
-            >
-              <Trash2 size={18} color={Colors.error} style={{ marginRight: 8 }} />
-              <Text style={styles.deleteButtonText}>Delete Transaction</Text>
-            </TouchableOpacity>
-          </ScrollView>
+              {txType === 'transfer' ? (
+                <TouchableOpacity
+                  style={[styles.selectorButton, showAccountDropdown === 'to' && styles.selectorButtonActive]}
+                  onPress={() => toggleAccountDropdown('to')}
+                >
+                  <Text style={styles.selectorButtonText} numberOfLines={1}>
+                    {accounts.find(a => a.id === transferToId)?.name || 'Select Account'}
+                  </Text>
+                  <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.selectorButton, showCategoryDropdown && styles.selectorButtonActive]}
+                  onPress={() => toggleCategoryDropdown()}
+                >
+                  <Text style={styles.selectorButtonText} numberOfLines={1}>
+                    {category || 'Select Category'}
+                  </Text>
+                  <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* Floating Dropdown Lists */}
+          {showAccountDropdown === 'from' && (
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
+                {accounts.map((a) => (
+                  <TouchableOpacity
+                    key={a.id}
+                    style={[styles.dropdownItem, accountId === a.id && styles.dropdownItemActive]}
+                    onPress={() => {
+                      setAccountId(a.id);
+                      setTimeout(() => toggleAccountDropdown(null), 50);
+                    }}
+                  >
+                    <Text style={[styles.dropdownItemText, accountId === a.id && styles.dropdownItemTextActive]}>
+                      {a.name}
+                    </Text>
+                    <Text style={styles.dropdownItemSubText}>
+                      {formatCurrency(accountBalances[a.id] || 0, currency)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+          )}
+
+          {showAccountDropdown === 'to' && txType === 'transfer' && (
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
+                {accounts.filter(a => a.id !== accountId).map((a) => (
+                  <TouchableOpacity
+                    key={a.id}
+                    style={[styles.dropdownItem, transferToId === a.id && styles.dropdownItemActive]}
+                    onPress={() => {
+                      setTransferToId(a.id);
+                      setTimeout(() => toggleAccountDropdown(null), 50);
+                    }}
+                  >
+                    <Text style={[styles.dropdownItemText, transferToId === a.id && styles.dropdownItemTextActive]}>
+                      {a.name}
+                    </Text>
+                    <Text style={styles.dropdownItemSubText}>
+                      {formatCurrency(accountBalances[a.id] || 0, currency)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+          )}
+
+          {showCategoryDropdown && (
+              <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
+                {filteredCategories.map((cat) => (
+                  <TouchableOpacity
+                    key={cat.id}
+                    style={[styles.dropdownItem, category === cat.display_name && styles.dropdownItemActive]}
+                    onPress={() => {
+                      setCategory(cat.display_name);
+                      setTimeout(() => toggleCategoryDropdown(), 50);
+                    }}
+                  >
+                    <Text style={[styles.dropdownItemText, category === cat.display_name && styles.dropdownItemTextActive]}>
+                      {cat.display_name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={styles.dropdownItemAdd}
+                  onPress={() => {
+                    setShowCustomCatInput(!showCustomCatInput);
+                    setTimeout(() => toggleCategoryDropdown(), 50);
+                  }}
+                >
+                  <Plus size={14} color={Colors.primary} />
+                  <Text style={styles.dropdownItemAddText}>+ Custom</Text>
+                </TouchableOpacity>
+              </ScrollView>
+          )}
+          </View>
+
+          {showCustomCatInput && txType !== 'transfer' && (
+            <View style={[styles.customCategoryRow, { marginTop: 12 }]}>
+              <TextInput
+                style={styles.customCategoryInput}
+                placeholder="Enter custom category name..."
+                placeholderTextColor={Colors.textDim}
+                value={customCatName}
+                onChangeText={setCustomCatName}
+                maxLength={60}
+              />
+              <TouchableOpacity
+                style={[
+                  styles.customCategoryAddBtn,
+                  !customCatName.trim() && { opacity: 0.4 },
+                ]}
+                onPress={handleCreateCustomCategory}
+                disabled={!customCatName.trim()}
+              >
+                <Text style={styles.customCategoryAddBtnText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View pointerEvents={selectorExpanded ? 'none' : 'auto'}>
+            <Text style={styles.inputLabel}>Notes (Optional)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Optional notes..."
+            placeholderTextColor={Colors.textDim}
+            value={notes}
+            onChangeText={setNotes}
+          />
+
+          <TouchableOpacity
+            style={styles.saveButton}
+            onPress={handleSaveTransaction}
+            disabled={saving}
+          >
+            <Text style={styles.saveButtonText}>
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Text>
+          </TouchableOpacity>
+
+
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={handleDeleteTransaction}
+            disabled={saving}
+          >
+            <Trash2 size={18} color={Colors.error} style={{ marginRight: 8 }} />
+            <Text style={styles.deleteButtonText}>Delete Transaction</Text>
+          </TouchableOpacity>
+          {/* Keypad */}
+          <View style={[styles.keypad, { marginTop: 24, minHeight: 260 }]}>
+            {[
+              ['+', '7', '8', '9'],
+              ['-', '4', '5', '6'],
+              ['×', '1', '2', '3'],
+              ['÷', '0', '.', '='],
+            ].map((row, i) => (
+              <View key={i} style={styles.keypadRow}>
+                {row.map((btn) => (
+                  <TouchableOpacity
+                    key={btn}
+                    style={[
+                      styles.keypadBtn,
+                      ['+', '-', '×', '÷'].includes(btn) && styles.keypadBtnOp,
+                      btn === '=' && styles.keypadBtnEq,
+                    ]}
+                    onPress={() => handleKeypadPress(btn)}
+                  >
+                    <Text style={[
+                      styles.keypadBtnText,
+                      ['+', '-', '×', '÷'].includes(btn) && styles.keypadBtnTextOp,
+                      btn === '=' && styles.keypadBtnTextEq,
+                    ]}>
+                      {btn}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ))}
+          </View>
+          </View>
+        </ScrollView>
         </View>
       </View>
     </Modal>
@@ -461,7 +731,6 @@ const styles = StyleSheet.create({
     padding: Tokens.spacing.lg,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
-    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -517,6 +786,101 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     marginTop: 4,
   },
+  selectorsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+    zIndex: 10,
+  },
+  selectorCol: {
+    flex: 1,
+    position: 'relative',
+  },
+  selectorLabel: {
+    ...Tokens.typography.caption,
+    color: Colors.textLight,
+    marginBottom: 6,
+    textAlign: 'center',
+    height: 18,
+  },
+  selectorButton: {
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Tokens.radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 48,
+  },
+  selectorButtonText: {
+    fontSize: 14,
+    color: Colors.textWhite,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  selectorButtonActive: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '15',
+  },
+  dropdownList: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: Colors.surface,
+    borderRadius: Tokens.radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginTop: 4,
+    maxHeight: 250,
+    overflow: 'hidden',
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  dropdownItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.surfaceElevated,
+  },
+  dropdownItemActive: {
+    backgroundColor: Colors.secondary + '20',
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    color: Colors.textLight,
+  },
+  dropdownItemTextActive: {
+    color: Colors.secondary,
+    fontWeight: '600',
+  },
+  dropdownItemSubText: {
+    fontSize: 12,
+    color: Colors.textDim,
+  },
+  dropdownItemAdd: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dropdownItemAddText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '600',
+  },
   accPill: {
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -546,11 +910,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: Tokens.spacing.lg,
   },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.background,
-  },
+
   deleteButton: {
     flexDirection: 'row',
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
@@ -561,12 +921,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 12,
-    marginBottom: Tokens.spacing.sm,
   },
   deleteButtonText: {
     fontSize: 15,
     fontWeight: '600',
     color: Colors.error,
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.background,
   },
   categoryPillsContainer: {
     flexDirection: 'row',
@@ -637,6 +1001,91 @@ const styles = StyleSheet.create({
   },
   customCategoryAddBtnText: {
     ...Tokens.typography.body,
+    color: Colors.background,
+    fontWeight: '700',
+  },
+  formScroll: {
+    flexShrink: 1,
+    paddingRight: 8,
+  },
+  displayArea: {
+    backgroundColor: Colors.surfaceElevated,
+    borderRadius: Tokens.radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Tokens.spacing.md,
+    marginBottom: Tokens.spacing.md,
+    marginTop: Tokens.spacing.xs,
+  },
+  displayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  displayText: {
+    fontSize: 32,
+    fontWeight: '300',
+  },
+  evalText: {
+    fontSize: 14,
+    color: Colors.textDim,
+    marginTop: 2,
+  },
+  backspaceBtn: {
+    padding: Tokens.spacing.sm,
+    backgroundColor: Colors.surface,
+    borderRadius: Tokens.radius.md,
+  },
+  warningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  warningText: {
+    fontSize: 12,
+    color: Colors.offline,
+  },
+  keypad: {
+    marginTop: Tokens.spacing.md,
+    paddingTop: Tokens.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+    gap: 8,
+  },
+  keypadRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  keypadBtn: {
+    flex: 1,
+    backgroundColor: Colors.surfaceElevated,
+    height: 54,
+    borderRadius: Tokens.radius.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  keypadBtnOp: {
+    backgroundColor: Colors.surface,
+  },
+  keypadBtnEq: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primaryDark,
+  },
+  keypadBtnText: {
+    fontSize: 22,
+    fontWeight: '500',
+    color: Colors.textWhite,
+  },
+  keypadBtnTextOp: {
+    color: Colors.textLight,
+  },
+  keypadBtnTextEq: {
     color: Colors.background,
     fontWeight: '700',
   },
