@@ -397,11 +397,11 @@ export default function SettingsScreen() {
               </View>
             </View>
             <View style={styles.widgetPreviewRight}>
-              <Text style={{ fontSize: 18, color: '#EF4444', fontWeight: 'bold' }}>↑</Text>
+              <Text style={{ fontSize: 18, color: Colors.expense, fontWeight: 'bold' }}>↑</Text>
               <View style={styles.widgetPreviewDivider} />
-              <Text style={{ fontSize: 18, color: '#10B981', fontWeight: 'bold' }}>↓</Text>
+              <Text style={{ fontSize: 18, color: Colors.income, fontWeight: 'bold' }}>↓</Text>
               <View style={styles.widgetPreviewDivider} />
-              <Text style={{ fontSize: 18, color: '#3B82F6', fontWeight: 'bold' }}>⇄</Text>
+              <Text style={{ fontSize: 18, color: Colors.syncing, fontWeight: 'bold' }}>⇄</Text>
             </View>
           </View>
         </View>
@@ -630,7 +630,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: Tokens.radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(244, 63, 94, 0.4)',
+    borderColor: Colors.errorBorder,
     alignSelf: 'flex-start',
   },
   signOutButtonText: {
@@ -764,7 +764,7 @@ const styles = StyleSheet.create({
   },
   previewContainer: {
     marginVertical: Tokens.spacing.md,
-    backgroundColor: '#0F1117',
+    backgroundColor: Colors.surfaceCard,
     borderRadius: Tokens.radius.md,
     padding: Tokens.spacing.md,
     borderWidth: 1,
@@ -784,7 +784,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: Colors.border,
   },
   widgetPreviewLeft: {
     flexDirection: 'row',
@@ -794,18 +794,18 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.textWhite,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
   },
   widgetPreviewSubtext: {
     fontSize: 12,
-    color: '#D1D5DB',
+    color: Colors.textLight,
   },
   widgetPreviewBalance: {
     fontSize: 15,
-    color: '#FFFFFF',
+    color: Colors.textWhite,
     fontWeight: 'bold',
   },
   widgetPreviewRight: {
@@ -816,7 +816,7 @@ const styles = StyleSheet.create({
   widgetPreviewDivider: {
     width: 1,
     height: 18,
-    backgroundColor: '#404040',
+    backgroundColor: Colors.borderGlow,
   },
   categoriesPreviewRow: {
     flexDirection: 'row',

@@ -1,5 +1,6 @@
 import React from 'react';
 import { FlexWidget, TextWidget, type ColorProp } from 'react-native-android-widget';
+import { Colors } from '@/theme/colors';
 
 export interface OrgWalletWidgetProps {
   balance: string;
@@ -114,7 +115,7 @@ export function OrgWalletWidget({
             text="↑"
             style={{
               fontSize: iconSize,
-              color: '#EF4444',
+              color: Colors.expense as ColorProp,
               fontWeight: 'bold',
             }}
           />
@@ -140,7 +141,7 @@ export function OrgWalletWidget({
             text="↓"
             style={{
               fontSize: iconSize,
-              color: '#10B981',
+              color: Colors.income as ColorProp,
               fontWeight: 'bold',
             }}
           />
@@ -166,7 +167,7 @@ export function OrgWalletWidget({
             text="⇄"
             style={{
               fontSize: iconSize,
-              color: '#3B82F6',
+              color: Colors.syncing as ColorProp,
               fontWeight: 'bold',
             }}
           />
