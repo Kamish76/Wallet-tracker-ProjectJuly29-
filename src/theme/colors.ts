@@ -32,6 +32,8 @@ export const Colors = {
   offline: '#F59E0B',       // Amber
   syncing: '#3B82F6',       // Blue
   error: '#EF4444',
+  errorBg: 'rgba(239, 68, 68, 0.12)',
+  errorBorder: 'rgba(239, 68, 68, 0.3)',
   success: '#10B981',
 
   // Overlays

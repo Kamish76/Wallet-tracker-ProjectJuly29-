@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import { Plus, Archive, X, Wallet as WalletIcon, Edit2, Trash2 } from 'lucide-react-native';
 import { useFocusEffect } from 'expo-router';
@@ -33,6 +34,7 @@ export default function AccountsScreen() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [currency, setCurrency] = useState('USD');
   const [saving, setSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const openCreateModal = () => {
     setEditingAccount(null);
@@ -51,6 +53,7 @@ export default function AccountsScreen() {
   const loadLocalAccounts = useCallback(async (organizationId: string, archived: boolean) => {
     const withBalances = await OfflineDatabase.getAccountsWithBalances(organizationId, archived);
     setAccounts(withBalances);
+    setIsLoading(false);
   }, []);
 
   useEffect(() => {
@@ -300,7 +303,11 @@ export default function AccountsScreen() {
 
       {/* Accounts List */}
       <ScrollView style={styles.listContainer}>
-        {accounts.length === 0 ? (
+        {isLoading ? (
+          <View style={styles.emptyCard}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : accounts.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>No accounts found</Text>
           </View>
@@ -634,11 +641,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 82, 82, 0.1)',
+    backgroundColor: Colors.errorBg,
     borderRadius: Tokens.radius.md,
     paddingVertical: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255, 82, 82, 0.3)',
+    borderColor: Colors.errorBorder,
   },
   deleteButtonDisabled: {
     opacity: 0.6,
