@@ -248,6 +248,70 @@ Expo CLI will detect your connected iPhone XR, prompt you to select your **Perso
 > [!NOTE]
 > Apps installed using a free Apple ID Personal Team remain valid for **7 days**. When expired, simply reconnect the iPhone XR to your Mac and re-run `npx expo run:ios --device` to refresh the certificate.
 
+---
+
+### 🔄 Phase 3: Untethered Sideloading with SideStore (Auto-Refreshing Over Wi-Fi)
+
+If you want OrgWallet installed natively with a free Apple ID **without needing to plug into your Mac every 7 days**, you can use **SideStore**.
+
+#### What is SideStore?
+SideStore is an on-device app (an advanced fork of AltStore) that runs directly on your iPhone XR. It uses a local WireGuard loopback VPN on your phone to talk to Apple's signing servers, allowing apps to be signed and refreshed **completely untethered from your Mac**.
+
+#### Advantages for OrgWallet:
+- **Automatic Background Refresh:** Can be automated via the iOS Shortcuts app to refresh in the background (e.g. every night when charging on Wi-Fi).
+- **No Weekly Mac Tethering:** You do not need to connect your Lightning cable every 7 days.
+- **Direct IPA Installation:** You can AirDrop updated `OrgWallet.ipa` files directly to your phone and install them inside SideStore.
+
+#### Step 1: One-Time SideStore Setup on iPhone XR
+1. Install **SideServer** on your Mac from [sidestore.io](https://sidestore.io/).
+2. Connect your iPhone XR to your Mac with a Lightning cable.
+3. Open SideServer on your Mac and click **Install SideStore**.
+4. In SideServer, click **Export Pairing File** (`.mobiledevicepairing`) and save it to your iCloud Drive or AirDrop it to your iPhone XR.
+5. On your iPhone XR:
+   - Open **Settings** > **Privacy & Security** > **Developer Mode** (ensure it is ON).
+   - Open **Settings** > **General** > **VPN & Device Management** and trust your Developer profile.
+   - Open the **SideStore** app, select your `.mobiledevicepairing` file when prompted, and install the local WireGuard VPN profile.
+   - Sign in with your Free Apple ID in SideStore settings.
+
+#### Step 2: Build the `OrgWallet.ipa` Locally on Mac
+Once Xcode is installed on your Mac, generate the unsigned release `.ipa`:
+```bash
+# 1. Build the Release archive
+xcodebuild -workspace ios/OrgWallet.xcworkspace \
+  -scheme OrgWallet \
+  -configuration Release \
+  -sdk iphoneos \
+  -archivePath ios/build/OrgWallet.xcarchive \
+  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGN_IDENTITY="" \
+  archive
+
+# 2. Package into an .ipa file
+mkdir -p Payload
+cp -r ios/build/OrgWallet.xcarchive/Products/Applications/OrgWallet.app Payload/
+zip -r OrgWallet.ipa Payload
+rm -rf Payload
+```
+
+#### Step 3: AirDrop and Install via SideStore
+1. AirDrop `OrgWallet.ipa` from your Mac to your iPhone XR and save it to the **Files** app.
+2. Open **SideStore** on your iPhone XR.
+3. Go to the **My Apps** tab and tap the **+** icon in the top left corner.
+4. Select `OrgWallet.ipa`. SideStore will sign the app with your Apple ID and install it onto your Home Screen.
+
+#### Step 4: Configure Automatic Background Refresh (iOS Shortcuts)
+To ensure OrgWallet **never expires**:
+1. Open the **Shortcuts** app on your iPhone XR.
+2. Go to the **Automation** tab and tap **+ (New Automation)**.
+3. Choose **Time of Day** (e.g. *2:00 AM daily*) or **When Connected to Charger**.
+4. Set it to **Run Immediately** (toggle off *"Ask Before Running"*).
+5. Add the action: **SideStore** > **Refresh Apps**.
+6. Whenever the automation triggers on your home Wi-Fi, SideStore connects via its internal WireGuard loopback, re-signs OrgWallet, and resets the 7-day expiration timer automatically!
+
+> [!TIP]
+> **Free Apple ID App Slot Limit:** Apple limits free Apple IDs to 3 active sideloaded apps at a time. SideStore uses 1 slot, OrgWallet uses 1 slot, leaving 1 spare slot for any other test app.
+
 ## 7. Device Setup: Enabling Developer Mode on iPhone XR (iOS 16+)
 
 Starting with iOS 16, Apple requires physical devices to explicitly enable **Developer Mode** before running ad-hoc or sideloaded apps.
