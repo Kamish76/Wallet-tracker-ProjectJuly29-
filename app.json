@@ -18,7 +18,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kamish.orgfinance",
-      "icon": "./assets/icon.png"
+      "buildNumber": "9",
+      "icon": "./assets/icon.png",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.kamish.orgfinance",
