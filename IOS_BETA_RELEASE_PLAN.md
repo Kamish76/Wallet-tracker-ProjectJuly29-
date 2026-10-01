@@ -198,36 +198,55 @@ EAS will build the iOS archive (`.xcarchive`), sign it with an App Store distrib
 
 ---
 
-## 6. Path C: Free Apple ID Sideloading (No Paid Developer Account)
+## 6. Path C: Local-First Beta Testing & Sideloading (Free Apple ID)
 
-If you do not have an active $99/year Apple Developer membership, you can sideload the build directly onto your iPhone XR using **Sideloadly** and your personal Apple ID.
+If you do not have an active $99/year Apple Developer membership and want to test locally on your Mac and iPhone XR without external CI pipelines:
 
-### Step 1: Build the Ad-Hoc `.ipa` File
-Configure `eas.json` for internal distribution, then run:
+### ⚡ Phase 1: Instant Local Live Beta-Testing via Expo Go (Immediate)
 
-```bash
-npx -y eas-cli build -p ios --profile preview
-```
-When the build finishes, download the generated `.ipa` file from the EAS build dashboard onto your Mac.
+This is the fastest, safest way to verify that the app runs flawlessly on your physical iPhone XR before building native binaries:
 
-### Step 2: Install Sideloadly on macOS
-1. Download and install [Sideloadly](https://sideloadly.io/) on your Mac.
-2. Launch Sideloadly.
-
-### Step 3: Sideload onto iPhone XR via USB
-1. Connect your iPhone XR to your Mac using a **Lightning to USB / USB-C cable**.
-2. If prompted on your iPhone XR, tap **Trust This Computer** and enter your passcode.
-3. In Sideloadly:
-   - Select your connected **iPhone XR** under *Device*.
-   - Drag and drop the downloaded OrgWallet `.ipa` into the IPA icon area.
-   - Enter your **Apple ID** in the Apple ID field.
-   - Click **Start**.
-4. Sideloadly will re-sign the app with your personal free certificate and push it directly onto your iPhone XR.
-
-> [!NOTE]
-> Free Apple ID sideloaded apps expire after **7 days**. To continue using the beta after 7 days, reconnect to your Mac and re-run Sideloadly or re-sign via AltStore/SideStore.
+1. **Install Expo Go on iPhone XR:** Open the iOS App Store on your iPhone XR, search for **Expo Go** (by 650 Industries), and install it.
+2. **Connect to Same Network:** Ensure your Mac and your iPhone XR are connected to the same Wi-Fi network (or use `--tunnel` mode).
+3. **Start the Local Metro Dev Server:**
+   ```bash
+   npx expo start
+   ```
+   *(If your Wi-Fi router blocks device-to-device communication, run `npx expo start --tunnel` instead).*
+4. **Open OrgWallet on iPhone XR:**
+   - Open the default **Camera app** on your iPhone XR.
+   - Point the camera at the QR code displayed in your Mac terminal.
+   - Tap the banner prompt **"Open in Expo Go"**.
+5. **Beta-Test the App:**
+   - Navigate through Dashboard, Accounts, and Transactions.
+   - Test adding and editing transactions with custom keypad calculations.
+   - Check the notch clearance and bottom tab bar spacing above the Home Indicator.
 
 ---
+
+### 📲 Phase 2: Local Native Installation onto iPhone XR via USB (Free Apple ID)
+
+To install OrgWallet as a native, standalone app icon on your iPhone XR without a paid developer account:
+
+#### Step 1: Install Xcode on macOS
+- Open the **Mac App Store** on your Mac, search for **Xcode**, and install it (free).
+- After installation completes, launch Xcode once and accept the license agreements.
+
+#### Step 2: Connect your iPhone XR via USB Cable
+- Connect your iPhone XR to your Mac with a Lightning-to-USB cable.
+- On your iPhone XR, tap **Trust This Computer** when prompted and enter your passcode.
+
+#### Step 3: Run the Local Build & Deploy to Device
+In your project terminal, run:
+```bash
+npx expo run:ios --device
+```
+Expo CLI will detect your connected iPhone XR, prompt you to select your **Personal Team** (your free Apple ID), automatically generate a free personal provisioning profile, compile the native code, and install OrgWallet directly onto your iPhone XR.
+
+*(Alternatively, you can open `ios/OrgWallet.xcworkspace` in Xcode, select your connected iPhone XR from the top device target dropdown, verify your Personal Team under Signing & Capabilities, and press **Cmd + R** to run).*
+
+> [!NOTE]
+> Apps installed using a free Apple ID Personal Team remain valid for **7 days**. When expired, simply reconnect the iPhone XR to your Mac and re-run `npx expo run:ios --device` to refresh the certificate.
 
 ## 7. Device Setup: Enabling Developer Mode on iPhone XR (iOS 16+)
 
