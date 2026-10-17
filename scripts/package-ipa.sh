@@ -21,7 +21,10 @@ echo "=================================================="
 
 # Check if xcodebuild is full Xcode or just CommandLineTools
 HAS_FULL_XCODE=false
-if xcode-select -p 2>/dev/null | grep -q "Xcode.app"; then
+if [ -d "/Applications/Xcode.app/Contents/Developer" ]; then
+  export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+  HAS_FULL_XCODE=true
+elif xcode-select -p 2>/dev/null | grep -q "Xcode.app"; then
   HAS_FULL_XCODE=true
 elif which xcodebuild >/dev/null 2>&1 && xcodebuild -version >/dev/null 2>&1; then
   HAS_FULL_XCODE=true
@@ -43,11 +46,12 @@ if [ -z "$APP_SOURCE" ]; then
     echo "🔨 Building Release archive with Xcode (unsigned for SideStore)..."
     mkdir -p "$BUILD_DIR"
     
-    xcodebuild -workspace ios/$APP_NAME.xcworkspace \
+    xcodebuild -workspace "ios/$APP_NAME.xcworkspace" \
       -scheme "$SCHEME" \
       -configuration "$CONFIGURATION" \
       -sdk iphoneos \
       -archivePath "$ARCHIVE_PATH" \
+      IPHONEOS_DEPLOYMENT_TARGET=15.1 \
       CODE_SIGNING_ALLOWED=NO \
       CODE_SIGNING_REQUIRED=NO \
       CODE_SIGN_IDENTITY="" \

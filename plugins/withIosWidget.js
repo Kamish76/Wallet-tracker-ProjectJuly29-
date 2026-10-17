@@ -94,6 +94,14 @@ function withWidgetXcodeTarget(config) {
       xcodeProject.addToPbxGroup(widgetGroup.uuid, mainProject.mainGroup);
     }
 
+    // Ensure PBXTargetDependency and PBXContainerItemProxy sections exist so addTarget links the dependency
+    if (!xcodeProject.hash.project.objects['PBXTargetDependency']) {
+      xcodeProject.hash.project.objects['PBXTargetDependency'] = {};
+    }
+    if (!xcodeProject.hash.project.objects['PBXContainerItemProxy']) {
+      xcodeProject.hash.project.objects['PBXContainerItemProxy'] = {};
+    }
+
     // Add App Extension target (`app_extension` automatically creates CopyFiles "Embed App Extensions" on main target)
     const target = xcodeProject.addTarget(
       WIDGET_TARGET_NAME,

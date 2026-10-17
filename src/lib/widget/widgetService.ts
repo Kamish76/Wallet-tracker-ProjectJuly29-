@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestWidgetUpdate } from 'react-native-android-widget';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
-import { calculateTotalNetBalance } from '@/lib/utils/balance';
 import { formatCurrency } from '@/lib/utils/currency';
 import { OrgWalletWidget } from '@/widgets/OrgWalletWidget';
 import { OrgWalletIosWidget } from '../../../modules/org-wallet-ios-widget';
@@ -74,9 +73,8 @@ export class WidgetService {
 
       if (orgId) {
         const currency = await WalletAuthService.getCachedCurrencyAsync();
-        const accounts = await OfflineDatabase.getAccounts(orgId);
-        const transactions = await OfflineDatabase.getTransactions(orgId, 500);
-        const totalBalance = calculateTotalNetBalance(accounts, transactions);
+        const accBalances = await OfflineDatabase.getAccountsWithBalances(orgId);
+        const totalBalance = accBalances.reduce((sum, b) => sum + (b.current_balance || 0), 0);
         balanceStr = formatCurrency(totalBalance, currency);
         await AsyncStorage.setItem(WIDGET_LAST_BALANCE_KEY, balanceStr);
       }

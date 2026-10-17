@@ -27,4 +27,9 @@ graphify-out/cache/
 graphify-out/cost.json
 graphify-out/graph.html
 graphify-out/.*
+graphify-out/20*/
 .icm/*/output/
+
+# iOS IPA build artifacts
+*.ipa
+*.ipa.zip
