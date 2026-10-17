@@ -22,6 +22,11 @@
       "icon": "./assets/icon.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.kamish.orgfinance"
+        ]
       }
     },
     "android": {
@@ -42,6 +47,7 @@
       "expo-router",
       "expo-secure-store",
       "expo-web-browser",
+      "./plugins/withIosWidget",
       [
         "react-native-android-widget",
         {

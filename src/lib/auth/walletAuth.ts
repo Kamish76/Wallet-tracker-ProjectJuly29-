@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, supabaseAdmin } from '@/lib/supabase/client';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { OfflineDatabase } from '@/lib/database/sqlite';
+import { WidgetService } from '@/lib/widget/widgetService';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
 import type { Organization } from '@/types/wallet';
@@ -106,9 +107,10 @@ export class WalletAuthService {
   }
 
   public static async clearAllUserData() {
-    this.clearCache();
+    await this.clearCache();
     try {
       await OfflineDatabase.clearAllData();
+      await WidgetService.clearWidgetData();
       console.log('[WalletAuthService] All local user database data and caches cleared.');
     } catch (err) {
       console.error('[WalletAuthService] Failed to clear local database:', err);

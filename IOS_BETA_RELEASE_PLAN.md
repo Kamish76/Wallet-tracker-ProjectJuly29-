@@ -298,7 +298,9 @@ rm -rf Payload
 1. AirDrop `OrgWallet.ipa` from your Mac to your iPhone XR and save it to the **Files** app.
 2. Open **SideStore** on your iPhone XR.
 3. Go to the **My Apps** tab and tap the **+** icon in the top left corner.
-4. Select `OrgWallet.ipa`. SideStore will sign the app with your Apple ID and install it onto your Home Screen.
+4. Select `OrgWallet.ipa`.
+5. When SideStore prompts **"Keep App Extensions?"**, tap **Keep App Extensions** so that `OrgWalletWidgetExtension` (`com.kamish.orgfinance.widget`) is signed and installed alongside the main app.
+6. Once installed, long-press your iPhone Home Screen, tap **+**, search **OrgWallet**, and add the **Medium (4x2)** Balance & Quick Actions widget.
 
 #### Step 4: Configure Automatic Background Refresh (iOS Shortcuts)
 To ensure OrgWallet **never expires**:
@@ -310,7 +312,7 @@ To ensure OrgWallet **never expires**:
 6. Whenever the automation triggers on your home Wi-Fi, SideStore connects via its internal WireGuard loopback, re-signs OrgWallet, and resets the 7-day expiration timer automatically!
 
 > [!TIP]
-> **Free Apple ID App Slot Limit:** Apple limits free Apple IDs to 3 active sideloaded apps at a time. SideStore uses 1 slot, OrgWallet uses 1 slot, leaving 1 spare slot for any other test app.
+> **Free Apple ID App ID Limit (3/3 Slots):** Apple limits free Apple IDs to 3 active App IDs / provisioning profiles at a time. `SideStore` uses 1 slot, `OrgWallet` (`com.kamish.orgfinance`) uses 1 slot, and `OrgWalletWidgetExtension` (`com.kamish.orgfinance.widget`) uses the 3rd slot.
 
 ## 7. Device Setup: Enabling Developer Mode on iPhone XR (iOS 16+)
 

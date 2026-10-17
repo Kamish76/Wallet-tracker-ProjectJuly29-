@@ -14,6 +14,7 @@ export default function TabsLayout() {
 
   const insets = useSafeAreaInsets();
   const paddingBottom = Math.max(14, insets.bottom);
+  const syncBarPaddingTop = Math.max(insets.top, 6);
   const tabBarHeight = 68 + paddingBottom; // base content height (72 - 14 = 58)
 
   useEffect(() => {
@@ -28,7 +29,7 @@ export default function TabsLayout() {
   return (
     <View style={styles.container}>
       {/* Top Sync Bar Indicator */}
-      <View style={styles.syncBar}>
+      <View style={[styles.syncBar, { paddingTop: syncBarPaddingTop }]}>
         <View style={styles.syncStatusLeft}>
           {isOnline ? (
             <Wifi size={14} color={Colors.online} />

@@ -5,6 +5,7 @@ import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { calculateTotalNetBalance } from '@/lib/utils/balance';
 import { formatCurrency } from '@/lib/utils/currency';
 import { OrgWalletWidget } from '@/widgets/OrgWalletWidget';
+import { OrgWalletIosWidget } from '../../../modules/org-wallet-ios-widget';
 import React from 'react';
 import { Platform } from 'react-native';
 
@@ -87,19 +88,41 @@ export class WidgetService {
   }
 
   public static async refreshWidgetData(organizationId?: string): Promise<void> {
-    if (Platform.OS !== 'android') return;
+    if (Platform.OS !== 'android' && Platform.OS !== 'ios') return;
 
     try {
       const { balance, opacity } = await this.getWidgetState(organizationId);
 
-      await requestWidgetUpdate({
-        widgetName: 'OrgWalletBalance',
-        renderWidget: () => React.createElement(OrgWalletWidget, { balance, opacity }),
-      });
-      console.log('[WidgetService] Updated Android home screen widget:', { balance, opacity });
+      if (Platform.OS === 'android') {
+        await requestWidgetUpdate({
+          widgetName: 'OrgWalletBalance',
+          renderWidget: () => React.createElement(OrgWalletWidget, { balance, opacity }),
+        });
+        console.log('[WidgetService] Updated Android home screen widget:', { balance, opacity });
+      } else if (Platform.OS === 'ios') {
+        await OrgWalletIosWidget.setWidgetData(balance, opacity);
+        console.log('[WidgetService] Updated iOS WidgetKit home screen widget:', { balance, opacity });
+      }
     } catch (error) {
-      // Ignore if widget is not added to home screen or Android widget API is unavailable
-      console.log('[WidgetService] Notice during requestWidgetUpdate:', error);
+      // Ignore if widget is not added to home screen or native widget API is unavailable
+      console.log('[WidgetService] Notice during refreshWidgetData:', error);
+    }
+  }
+
+  public static async clearWidgetData(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(WIDGET_LAST_BALANCE_KEY);
+      const opacity = await this.getOpacity();
+      if (Platform.OS === 'android') {
+        await requestWidgetUpdate({
+          widgetName: 'OrgWalletBalance',
+          renderWidget: () => React.createElement(OrgWalletWidget, { balance: '$0.00', opacity }),
+        });
+      } else if (Platform.OS === 'ios') {
+        await OrgWalletIosWidget.clearWidgetData();
+      }
+    } catch (error) {
+      console.log('[WidgetService] Notice during clearWidgetData:', error);
     }
   }
 }

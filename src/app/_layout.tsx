@@ -23,8 +23,8 @@ export default function RootLayout() {
       SyncEngine.setNetworkStatus(state.isConnected ?? false);
     });
 
-    // Refresh Android widget on app launch
-    if (Platform.OS === 'android') {
+    // Refresh home screen widget on app launch (Android & iOS)
+    if (Platform.OS === 'android' || Platform.OS === 'ios') {
       WidgetService.refreshWidgetData().catch(() => {});
     }
 

@@ -375,7 +375,11 @@ export default function SettingsScreen() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Home Screen Widget</Text>
         <Text style={styles.cardDescription}>
-          Customize the background opacity of your Android home screen widget.
+          {Platform.OS === 'android'
+            ? 'Customize the background opacity of your Android home screen widget.'
+            : Platform.OS === 'ios'
+            ? 'Customize the background opacity of your iOS WidgetKit (Medium 4x2) home screen widget.'
+            : 'Customize widget opacity preview. Home screen widgets are supported on Android and iOS.'}
         </Text>
 
         {/* Live Preview Banner */}
@@ -448,10 +452,14 @@ export default function SettingsScreen() {
         <TouchableOpacity
           style={styles.syncNowButton}
           onPress={handleRefreshWidgetNow}
-          disabled={updatingWidget}
+          disabled={updatingWidget || (Platform.OS !== 'android' && Platform.OS !== 'ios')}
         >
           <Text style={styles.syncNowButtonText}>
-            {updatingWidget ? 'Updating Widget...' : 'Push Update to Home Screen'}
+            {Platform.OS !== 'android' && Platform.OS !== 'ios'
+              ? 'Widget Update (Mobile Only)'
+              : updatingWidget
+              ? 'Updating Widget...'
+              : 'Push Update to Home Screen'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -507,9 +515,9 @@ export default function SettingsScreen() {
 
       {/* About Section */}
       <View style={styles.aboutCard}>
-        <Text style={styles.aboutTitle}>OrgWallet v0.4.3</Text>
+        <Text style={styles.aboutTitle}>OrgWallet v0.4.4</Text>
         <Text style={styles.aboutText}>
-          Android-optimized mobile app for OrgFinance Personal Wallet tracking. Built with Expo React Native, Supabase, and SQLite offline synchronization.
+          Cross-platform mobile app for OrgFinance Personal Wallet tracking. Built with Expo React Native, Supabase, and SQLite offline synchronization.
         </Text>
         <TouchableOpacity 
           style={{ marginTop: 16 }}
