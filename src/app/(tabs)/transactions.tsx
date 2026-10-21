@@ -10,7 +10,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Plus, RefreshCw } from 'lucide-react-native';
+import { useFocusEffect } from 'expo-router';
 import { OfflineDatabase } from '@/lib/database/sqlite';
+import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { AddTransactionModal } from '@/components/AddTransactionModal';
 import { EditTransactionModal } from '@/components/EditTransactionModal';
@@ -81,6 +83,24 @@ export default function TransactionsScreen() {
     init();
   }, [loadLocalData]);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (orgId) {
+        loadLocalData(orgId, 0);
+      }
+    }, [orgId, loadLocalData])
+  );
+
+  useEffect(() => {
+    if (!orgId) return;
+    const unsubscribe = SyncEngine.subscribe((_count, isSyncing) => {
+      if (!isSyncing) {
+        loadLocalData(orgId, 0);
+      }
+    });
+    return () => unsubscribe();
+  }, [orgId, loadLocalData]);
+
   const handleEditTransaction = useCallback((tx: WalletTransaction) => {
     setSelectedTx(tx);
     setEditModalVisible(true);
@@ -99,7 +119,10 @@ export default function TransactionsScreen() {
           onPress: async () => {
             try {
               await OfflineDatabase.deleteTransaction(tx.id, orgId);
-              await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', { id: tx.id });
+              await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', {
+                id: tx.id,
+                organization_id: tx.organization_id || orgId,
+              });
               await loadLocalData(orgId, 0);
             } catch (err: any) {
               Alert.alert('Error', err?.message || 'Failed to delete transaction.');
@@ -113,6 +136,7 @@ export default function TransactionsScreen() {
   const handleRefresh = useCallback(async () => {
     if (!orgId) return;
     setRefreshing(true);
+    await SyncEngine.syncNow(orgId);
     await loadLocalData(orgId, 0);
     setRefreshing(false);
   }, [orgId, loadLocalData]);

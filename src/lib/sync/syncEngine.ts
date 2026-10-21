@@ -108,16 +108,25 @@ export class SyncEngine {
       // Step 1: Push pending mutations to Supabase
       await this.pushPendingQueue(settings.conflictResolution);
 
-      // Step 2: Pull latest state from Supabase if org ID provided
-      if (organizationId) {
-        await this.pullLatestData(organizationId);
+      // Step 2: Pull latest state from Supabase if org ID provided (or cached org fallback)
+      let targetOrgId = organizationId;
+      if (!targetOrgId) {
+        try {
+          const { WalletAuthService } = require('@/lib/auth/walletAuth');
+          const cached = await WalletAuthService.getCachedOrgIdAsync();
+          if (cached) targetOrgId = cached;
+        } catch {}
+      }
+
+      if (targetOrgId) {
+        await this.pullLatestData(targetOrgId);
       }
 
       this.isSyncing = false;
       await this.notifyListeners();
       if (Platform.OS === 'android' || Platform.OS === 'ios') {
         const { WidgetService } = require('@/lib/widget/widgetService');
-        WidgetService.refreshWidgetData(organizationId).catch(() => {});
+        WidgetService.refreshWidgetData(targetOrgId).catch(() => {});
       }
       return { success: true };
     } catch (error: any) {
@@ -243,11 +252,14 @@ export class SyncEngine {
             throw error;
           }
         } else if (item.action === 'DELETE_TRANSACTION') {
-          const { error } = await supabaseAdmin
+          let query = supabaseAdmin
             .from('transactions')
             .delete()
-            .eq('id', payload.id)
-            .eq('organization_id', payload.organization_id);
+            .eq('id', payload.id);
+          if (payload.organization_id) {
+            query = query.eq('organization_id', payload.organization_id);
+          }
+          const { error } = await query;
 
           if (!error) success = true;
           else if (conflictRule === 'server_wins') {
@@ -289,11 +301,14 @@ export class SyncEngine {
           if (!error) success = true;
           else throw error;
         } else if (item.action === 'DELETE_ACCOUNT') {
-          const { error } = await supabaseAdmin
+          let query = supabaseAdmin
             .from('wallet_accounts')
             .delete()
-            .eq('id', payload.id)
-            .eq('organization_id', payload.organization_id);
+            .eq('id', payload.id);
+          if (payload.organization_id) {
+            query = query.eq('organization_id', payload.organization_id);
+          }
+          const { error } = await query;
 
           if (!error) success = true;
           else if (conflictRule === 'server_wins') {
@@ -474,6 +489,7 @@ export class SyncEngine {
           description: tx.description,
           created_at: tx.created_at,
           occurred_at: tx.occurred_at,
+          is_initial: Boolean(tx.is_initial),
         }, 'synced');
       }
     }

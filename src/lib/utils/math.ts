@@ -17,9 +17,15 @@ export function evaluateMathExpression(expr: string): number {
 
     const tokens: (number | string)[] = [];
     let curNum = '';
-    for (const char of clean) {
+    for (let j = 0; j < clean.length; j++) {
+      const char = clean[j];
+      // Check if this '-' is a unary negative sign for the following number
+      if (char === '-' && (tokens.length === 0 || typeof tokens[tokens.length - 1] === 'string') && curNum === '') {
+        curNum = '-';
+        continue;
+      }
       if ('+-*/'.includes(char)) {
-        if (curNum !== '') {
+        if (curNum !== '' && curNum !== '-') {
           tokens.push(parseFloat(curNum));
           curNum = '';
         }
@@ -28,7 +34,7 @@ export function evaluateMathExpression(expr: string): number {
         curNum += char;
       }
     }
-    if (curNum !== '') {
+    if (curNum !== '' && curNum !== '-') {
       tokens.push(parseFloat(curNum));
     }
 

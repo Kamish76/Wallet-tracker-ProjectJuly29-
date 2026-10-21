@@ -69,7 +69,8 @@ export class OfflineDatabase {
         description TEXT,
         created_at TEXT,
         occurred_at TEXT,
-        sync_status TEXT DEFAULT 'synced'
+        sync_status TEXT DEFAULT 'synced',
+        is_initial INTEGER DEFAULT 0
       );
 
       CREATE TABLE IF NOT EXISTS offline_sync_queue (
@@ -99,6 +100,11 @@ export class OfflineDatabase {
       CREATE INDEX IF NOT EXISTS idx_wallet_categories_name ON wallet_categories(organization_id, normalized_name);
       CREATE INDEX IF NOT EXISTS idx_transactions_org_date ON local_transactions(organization_id, occurred_at DESC);
     `);
+
+    // Safe migration: add is_initial column to existing local databases
+    try {
+      await db.execAsync('ALTER TABLE local_transactions ADD COLUMN is_initial INTEGER DEFAULT 0;');
+    } catch {}
   }
 
   // --- Clear All Local Database Data (for Login/Logout hygiene) ---
@@ -182,6 +188,7 @@ export class OfflineDatabase {
         LEFT JOIN local_transactions t 
           ON (t.account_id = a.id OR (t.type = 'transfer' AND t.transfer_to_account_id = a.id))
           AND t.organization_id = a.organization_id
+          AND (t.is_initial IS NULL OR t.is_initial = 0)
         WHERE a.organization_id = ? ${condition}
         GROUP BY a.id
         ORDER BY a.is_active DESC, a.name ASC;
@@ -242,9 +249,9 @@ export class OfflineDatabase {
       await db.runAsync(
         `INSERT INTO local_transactions (
            id, organization_id, user_id, type, amount, account_id, transfer_to_account_id,
-           category, category_id, description, created_at, occurred_at, sync_status
+           category, category_id, description, created_at, occurred_at, sync_status, is_initial
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            amount = excluded.amount,
            type = excluded.type,
@@ -254,7 +261,8 @@ export class OfflineDatabase {
            category_id = excluded.category_id,
            description = excluded.description,
            occurred_at = excluded.occurred_at,
-           sync_status = excluded.sync_status;`,
+           sync_status = excluded.sync_status,
+           is_initial = excluded.is_initial;`,
         [
           tx.id ?? null,
           tx.organization_id ?? null,
@@ -269,6 +277,7 @@ export class OfflineDatabase {
           tx.created_at ?? null,
           tx.occurred_at ?? null,
           syncStatus ?? 'synced',
+          tx.is_initial ? 1 : 0,
         ]
       );
     });
@@ -314,6 +323,7 @@ export class OfflineDatabase {
         created_at: r.created_at,
         occurred_at: r.occurred_at,
         sync_status: r.sync_status,
+        is_initial: Boolean(r.is_initial),
       }));
     });
   }

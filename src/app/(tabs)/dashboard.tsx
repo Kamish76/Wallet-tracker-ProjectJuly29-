@@ -172,9 +172,8 @@ export default function DashboardScreen() {
     if (!orgId) return;
     setRefreshing(true);
     await SyncEngine.syncNow(orgId);
-    await loadLocalData(orgId, undefined, 0);
     setRefreshing(false);
-  }, [orgId, loadLocalData]);
+  }, [orgId]);
 
   const handlePrevMonth = useCallback(() => {
     const newMonth = new Date(currentMonth);
@@ -214,7 +213,10 @@ export default function DashboardScreen() {
           onPress: async () => {
             try {
               await OfflineDatabase.deleteTransaction(tx.id, tx.organization_id);
-              await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', { id: tx.id });
+              await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', {
+                id: tx.id,
+                organization_id: tx.organization_id || orgId,
+              });
               if (orgId) {
                 await loadLocalData(orgId, undefined, 0);
                 WidgetService.refreshWidgetData(orgId).catch(() => {});

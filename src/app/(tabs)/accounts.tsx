@@ -107,6 +107,14 @@ export default function AccountsScreen() {
 
     setSaving(true);
     try {
+      const rateStatus = await RateLimiter.checkLimit('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+      if (!rateStatus.allowed) {
+        Alert.alert('Rate Limit Exceeded', `Too many attempts. Please try again in ${rateStatus.retryAfterSeconds}s.`);
+        setSaving(false);
+        return;
+      }
+      await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+
       if (editingAccount) {
         const updated: WalletAccount = {
           ...editingAccount,
@@ -202,7 +210,10 @@ export default function AccountsScreen() {
             if (!orgId) return;
             try {
               await OfflineDatabase.deleteAccount(account.id, orgId);
-              await OfflineDatabase.enqueueMutation('DELETE_ACCOUNT', { id: account.id });
+              await OfflineDatabase.enqueueMutation('DELETE_ACCOUNT', {
+                id: account.id,
+                organization_id: account.organization_id || orgId,
+              });
 
               setModalVisible(false);
               setEditingAccount(null);

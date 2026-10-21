@@ -56,7 +56,15 @@ export default function AuthCallbackScreen() {
         }
 
         if (!session) {
-          throw new Error('No valid authentication session found from Google Sign-In.');
+          if (Platform.OS !== 'web') {
+            // On native mobile, WebBrowser.openAuthSessionAsync resolves the session in login.tsx.
+            // Wait briefly before asserting error to avoid race condition error flashes.
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            session = await WalletAuthService.getSession();
+          }
+          if (!session) {
+            throw new Error('No valid authentication session found from Google Sign-In.');
+          }
         }
 
         // 4. Resolve Personal Wallet and route to Dashboard

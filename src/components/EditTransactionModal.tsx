@@ -274,7 +274,12 @@ export function EditTransactionModal({
 
     setSaving(true);
     try {
-      await RateLimiter.assertAllowed('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+      const rateStatus = await RateLimiter.checkLimit('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+      if (!rateStatus.allowed) {
+        Alert.alert('Rate Limit Exceeded', `Too many attempts. Please try again in ${rateStatus.retryAfterSeconds}s.`);
+        setSaving(false);
+        return;
+      }
       await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
 
       const updatedTx: WalletTransaction = {
@@ -319,7 +324,12 @@ export function EditTransactionModal({
           onPress: async () => {
             setSaving(true);
             try {
-              await RateLimiter.assertAllowed('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+              const rateStatus = await RateLimiter.checkLimit('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+              if (!rateStatus.allowed) {
+                Alert.alert('Rate Limit Exceeded', `Too many attempts. Please try again in ${rateStatus.retryAfterSeconds}s.`);
+                setSaving(false);
+                return;
+              }
               await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
 
               await OfflineDatabase.deleteTransaction(transaction.id, orgId);

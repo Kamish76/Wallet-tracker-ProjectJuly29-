@@ -8,6 +8,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "test": "node scripts/test-unit.mjs",
     "package:ipa": "bash scripts/package-ipa.sh"
   },
   "dependencies": {
