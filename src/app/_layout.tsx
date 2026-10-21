@@ -8,8 +8,24 @@ import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WidgetService } from '@/lib/widget/widgetService';
 import { registerBackgroundSync } from '@/lib/sync/backgroundTask';
 import NetInfo from '@react-native-community/netinfo';
-import { Colors } from '@/theme/colors';
+import { ThemeProvider, useTheme } from '@/theme/ThemeContext';
 
+function ThemedRootNavigation() {
+  const { colors, isDark } = useTheme();
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
+          animation: 'fade',
+        }}
+      />
+    </View>
+  );
+}
 
 export default function RootLayout() {
   useEffect(() => {
@@ -38,16 +54,9 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={styles.container}>
-      <StatusBar style="light" backgroundColor={Colors.background} />
-      <View style={styles.container}>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: Colors.background },
-            animation: 'fade',
-          }}
-        />
-      </View>
+      <ThemeProvider>
+        <ThemedRootNavigation />
+      </ThemeProvider>
     </GestureHandlerRootView>
   );
 }
@@ -55,6 +64,5 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
 });

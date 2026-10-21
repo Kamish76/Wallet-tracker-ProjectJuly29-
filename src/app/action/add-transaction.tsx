@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Colors } from '@/theme/colors';
+import { useTheme } from '@/theme/ThemeContext';
 
 export default function ActionAddTransactionRoute() {
   const { type } = useLocalSearchParams<{ type?: string }>();
+  const { colors } = useTheme();
 
   useEffect(() => {
     const targetType =
@@ -15,5 +16,5 @@ export default function ActionAddTransactionRoute() {
     router.replace(`/dashboard?type=${targetType}`);
   }, [type]);
 
-  return <View style={{ flex: 1, backgroundColor: Colors.background }} />;
+  return <View style={{ flex: 1, backgroundColor: colors.background }} />;
 }

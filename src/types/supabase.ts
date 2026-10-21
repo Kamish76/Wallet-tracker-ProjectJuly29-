@@ -186,6 +186,42 @@ export interface Database {
         };
         Relationships: [];
       };
+      account_deletion_requests: {
+        Row: {
+          id: string;
+          user_id: string;
+          email: string;
+          reason: string | null;
+          status: 'pending' | 'cancelled' | 'completed';
+          requested_at: string;
+          scheduled_deletion_at: string;
+          cancelled_at: string | null;
+          completed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          email: string;
+          reason?: string | null;
+          status?: 'pending' | 'cancelled' | 'completed';
+          requested_at?: string;
+          scheduled_deletion_at?: string;
+          cancelled_at?: string | null;
+          completed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          email?: string;
+          reason?: string | null;
+          status?: 'pending' | 'cancelled' | 'completed';
+          requested_at?: string;
+          scheduled_deletion_at?: string;
+          cancelled_at?: string | null;
+          completed_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: { [_ in never]: never };
     Functions: { [_ in never]: never };

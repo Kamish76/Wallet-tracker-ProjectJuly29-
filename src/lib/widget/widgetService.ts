@@ -6,18 +6,41 @@ import { formatCurrency } from '@/lib/utils/currency';
 import { OrgWalletWidget } from '@/widgets/OrgWalletWidget';
 import { OrgWalletIosWidget } from '../../../modules/org-wallet-ios-widget';
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, Appearance } from 'react-native';
 
 const WIDGET_OPACITY_KEY = '@orgwallet_widget_opacity';
 const WIDGET_LAST_BALANCE_KEY = '@orgwallet_widget_last_balance';
+const THEME_STORAGE_KEY = '@orgwallet_theme_mode';
 const DEFAULT_OPACITY = 0.85;
 
 export class WidgetService {
+  public static async getThemeMode(): Promise<'auto' | 'light' | 'dark'> {
+    try {
+      const stored = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+      if (stored === 'light' || stored === 'dark' || stored === 'auto') {
+        return stored;
+      }
+    } catch (error) {
+      console.error('[WidgetService] Error reading theme mode from AsyncStorage:', error);
+    }
+    return 'auto';
+  }
+
+  public static resolveIsDark(themeMode: 'auto' | 'light' | 'dark'): boolean {
+    if (themeMode === 'light') return false;
+    if (themeMode === 'dark') return true;
+    return Appearance.getColorScheme() !== 'light';
+  }
+
   public static async getCachedWidgetState(): Promise<{
     balance: string;
     opacity: number;
+    isDark: boolean;
+    themeMode: 'auto' | 'light' | 'dark';
   }> {
     const opacity = await this.getOpacity();
+    const themeMode = await this.getThemeMode();
+    const isDark = this.resolveIsDark(themeMode);
     let balance = 'Loading...';
     try {
       const stored = await AsyncStorage.getItem(WIDGET_LAST_BALANCE_KEY);
@@ -27,7 +50,7 @@ export class WidgetService {
     } catch (err) {
       console.error('[WidgetService] Error reading cached balance:', err);
     }
-    return { balance, opacity };
+    return { balance, opacity, isDark, themeMode };
   }
 
   public static async getOpacity(): Promise<number> {
@@ -55,11 +78,21 @@ export class WidgetService {
     }
   }
 
-  public static async getWidgetState(organizationId?: string): Promise<{
+  public static async getWidgetState(
+    organizationId?: string,
+    explicitBalance?: number,
+    explicitCurrency?: string,
+    explicitIsDark?: boolean,
+    explicitThemeMode?: 'auto' | 'light' | 'dark'
+  ): Promise<{
     balance: string;
     opacity: number;
+    isDark: boolean;
+    themeMode: 'auto' | 'light' | 'dark';
   }> {
     const opacity = await this.getOpacity();
+    const themeMode = explicitThemeMode || (await this.getThemeMode());
+    const isDark = typeof explicitIsDark === 'boolean' ? explicitIsDark : this.resolveIsDark(themeMode);
     let balanceStr = '$0.00';
 
     try {
@@ -71,35 +104,62 @@ export class WidgetService {
         }
       }
 
-      if (orgId) {
-        const currency = await WalletAuthService.getCachedCurrencyAsync();
+      const currency = explicitCurrency || (await WalletAuthService.getCachedCurrencyAsync());
+
+      if (typeof explicitBalance === 'number' && !isNaN(explicitBalance)) {
+        balanceStr = formatCurrency(explicitBalance, currency);
+        await AsyncStorage.setItem(WIDGET_LAST_BALANCE_KEY, balanceStr);
+      } else if (orgId) {
         const accBalances = await OfflineDatabase.getAccountsWithBalances(orgId);
         const totalBalance = accBalances.reduce((sum, b) => sum + (b.current_balance || 0), 0);
         balanceStr = formatCurrency(totalBalance, currency);
         await AsyncStorage.setItem(WIDGET_LAST_BALANCE_KEY, balanceStr);
+      } else {
+        const cachedBalance = await AsyncStorage.getItem(WIDGET_LAST_BALANCE_KEY);
+        if (cachedBalance) {
+          balanceStr = cachedBalance;
+        }
       }
     } catch (error) {
       console.error('[WidgetService] Error calculating balance:', error);
+      try {
+        const cachedBalance = await AsyncStorage.getItem(WIDGET_LAST_BALANCE_KEY);
+        if (cachedBalance) {
+          balanceStr = cachedBalance;
+        }
+      } catch {}
     }
 
-    return { balance: balanceStr, opacity };
+    return { balance: balanceStr, opacity, isDark, themeMode };
   }
 
-  public static async refreshWidgetData(organizationId?: string): Promise<void> {
+  public static async refreshWidgetData(
+    organizationId?: string,
+    explicitBalance?: number,
+    explicitCurrency?: string,
+    explicitIsDark?: boolean,
+    explicitThemeMode?: 'auto' | 'light' | 'dark'
+  ): Promise<void> {
     if (Platform.OS !== 'android' && Platform.OS !== 'ios') return;
 
     try {
-      const { balance, opacity } = await this.getWidgetState(organizationId);
+      const { balance, opacity, isDark, themeMode } = await this.getWidgetState(
+        organizationId,
+        explicitBalance,
+        explicitCurrency,
+        explicitIsDark,
+        explicitThemeMode
+      );
 
       if (Platform.OS === 'android') {
         await requestWidgetUpdate({
           widgetName: 'OrgWalletBalance',
-          renderWidget: () => React.createElement(OrgWalletWidget, { balance, opacity }),
+          renderWidget: () => React.createElement(OrgWalletWidget, { balance, opacity, isDark }),
         });
-        console.log('[WidgetService] Updated Android home screen widget:', { balance, opacity });
+        console.log('[WidgetService] Updated Android home screen widget:', { balance, opacity, isDark });
       } else if (Platform.OS === 'ios') {
-        await OrgWalletIosWidget.setWidgetData(balance, opacity);
-        console.log('[WidgetService] Updated iOS WidgetKit home screen widget:', { balance, opacity });
+        await OrgWalletIosWidget.setWidgetData(balance, opacity, themeMode, isDark);
+        console.log('[WidgetService] Updated iOS WidgetKit home screen widget:', { balance, opacity, themeMode, isDark });
       }
     } catch (error) {
       // Ignore if widget is not added to home screen or native widget API is unavailable
@@ -111,10 +171,12 @@ export class WidgetService {
     try {
       await AsyncStorage.removeItem(WIDGET_LAST_BALANCE_KEY);
       const opacity = await this.getOpacity();
+      const themeMode = await this.getThemeMode();
+      const isDark = this.resolveIsDark(themeMode);
       if (Platform.OS === 'android') {
         await requestWidgetUpdate({
           widgetName: 'OrgWalletBalance',
-          renderWidget: () => React.createElement(OrgWalletWidget, { balance: '$0.00', opacity }),
+          renderWidget: () => React.createElement(OrgWalletWidget, { balance: '$0.00', opacity, isDark }),
         });
       } else if (Platform.OS === 'ios') {
         await OrgWalletIosWidget.clearWidgetData();

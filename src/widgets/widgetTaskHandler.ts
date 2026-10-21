@@ -12,13 +12,14 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
       case 'WIDGET_UPDATE':
       case 'WIDGET_RESIZED':
       case 'WIDGET_CLICK':
-        // 1. INSTANT initial render using cached balance so the widget never looks empty or disappeared
+        // 1. INSTANT initial render using cached balance and theme so the widget never looks empty or wrong
         try {
           const cached = await WidgetService.getCachedWidgetState();
           props.renderWidget(
             React.createElement(OrgWalletWidget, {
               balance: cached.balance,
               opacity: cached.opacity,
+              isDark: cached.isDark,
               isLoading: true,
               width: widgetInfo.width,
               height: widgetInfo.height,
@@ -30,11 +31,12 @@ export async function widgetTaskHandler(props: WidgetTaskHandlerProps) {
 
         // 2. Fetch fresh live state from SQLite & auth
         try {
-          const { balance, opacity } = await WidgetService.getWidgetState();
+          const { balance, opacity, isDark } = await WidgetService.getWidgetState();
           props.renderWidget(
             React.createElement(OrgWalletWidget, {
               balance,
               opacity,
+              isDark,
               isLoading: false,
               width: widgetInfo.width,
               height: widgetInfo.height,

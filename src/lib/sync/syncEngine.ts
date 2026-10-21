@@ -115,7 +115,7 @@ export class SyncEngine {
 
       this.isSyncing = false;
       await this.notifyListeners();
-      if (Platform.OS === 'android') {
+      if (Platform.OS === 'android' || Platform.OS === 'ios') {
         const { WidgetService } = require('@/lib/widget/widgetService');
         WidgetService.refreshWidgetData(organizationId).catch(() => {});
       }
@@ -154,7 +154,7 @@ export class SyncEngine {
       this.isSyncing = false;
       await this.notifyListeners();
       console.log('[SyncEngine] First-time auto sync completed successfully.');
-      if (Platform.OS === 'android') {
+      if (Platform.OS === 'android' || Platform.OS === 'ios') {
         const { WidgetService } = require('@/lib/widget/widgetService');
         WidgetService.refreshWidgetData(organizationId).catch(() => {});
       }
@@ -370,6 +370,7 @@ export class SyncEngine {
     const pendingCreateAccIds = new Set<string>();
     const pendingCreateTxIds = new Set<string>();
     const pendingCreateCatIds = new Set<string>();
+    let hasPendingOrgCurrencyUpdate = false;
 
     for (const item of pendingItems) {
       try {
@@ -380,6 +381,23 @@ export class SyncEngine {
           pendingCreateTxIds.add(payload.id);
         } else if (item.action === 'CREATE_CATEGORY' && payload.id) {
           pendingCreateCatIds.add(payload.id);
+        } else if (item.action === 'UPDATE_ORGANIZATION' && payload.id === organizationId) {
+          hasPendingOrgCurrencyUpdate = true;
+        }
+      } catch {}
+    }
+
+    // 0. Sync organization currency if not pending local update
+    if (!hasPendingOrgCurrencyUpdate) {
+      try {
+        const { data: orgRow, error: orgRowErr } = await supabaseAdmin
+          .from('organizations')
+          .select('currency')
+          .eq('id', organizationId)
+          .maybeSingle();
+        if (!orgRowErr && orgRow?.currency) {
+          const { WalletAuthService } = require('@/lib/auth/walletAuth');
+          await WalletAuthService.updateCachedCurrency(orgRow.currency);
         }
       } catch {}
     }
@@ -411,18 +429,32 @@ export class SyncEngine {
       }
     }
 
-    // 2. Fetch all transactions (removed limit to ensure older records are not deleted locally)
+    // 2. Fetch recent transactions (limit 10,000 to prevent silent PostgREST 1,000-row cap truncation)
     const { data: txs, error: txErr } = await supabaseAdmin
       .from('transactions')
       .select('*')
       .eq('organization_id', organizationId)
-      .order('occurred_at', { ascending: false });
+      .order('occurred_at', { ascending: false })
+      .limit(10000);
 
     if (!txErr && txs) {
       const serverIds = new Set(txs.map((t) => t.id));
+      const oldestServerTx = txs.length > 0 ? txs[txs.length - 1] : null;
+      const oldestServerEpoch = oldestServerTx?.occurred_at ? new Date(oldestServerTx.occurred_at).getTime() : null;
+      const isPotentiallyTruncated = txs.length >= 1000;
+
       // Fetch all local transactions by setting a high limit
       const localTxs = await OfflineDatabase.getTransactions(organizationId, 1000000);
       for (const localTx of localTxs) {
+        // Protect older transactions beyond the fetched window from silent deletion.
+        // shortcut: timestamp window deletion check instead of full pagination cursor, upgrade to keyset cursor sync when orgs exceed 10k rows
+        if (isPotentiallyTruncated && oldestServerEpoch !== null && !isNaN(oldestServerEpoch)) {
+          const localTxEpoch = localTx.occurred_at ? new Date(localTx.occurred_at).getTime() : null;
+          if (localTxEpoch !== null && !isNaN(localTxEpoch) && localTxEpoch < oldestServerEpoch) {
+            continue; // Outside query window; preserve locally
+          }
+        }
+
         // Remove ANY local transaction that does not exist on the server AND is not pending creation offline
         if (!serverIds.has(localTx.id) && !pendingCreateTxIds.has(localTx.id)) {
           await OfflineDatabase.deleteTransaction(localTx.id, organizationId);

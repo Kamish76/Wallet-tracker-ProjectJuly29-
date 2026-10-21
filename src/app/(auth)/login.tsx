@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,10 +13,14 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
-import { Colors } from '@/theme/colors';
+import { useTheme } from '@/theme/ThemeContext';
 import { Tokens } from '@/theme/tokens';
+import type { ThemeColors } from '@/theme/colors';
 
 export default function LoginScreen() {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -86,7 +90,7 @@ export default function LoginScreen() {
           <TextInput
             style={styles.input}
             placeholder="you@example.com"
-            placeholderTextColor={Colors.textDim}
+            placeholderTextColor={colors.textDim}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -97,7 +101,7 @@ export default function LoginScreen() {
           <TextInput
             style={styles.input}
             placeholder="••••••••"
-            placeholderTextColor={Colors.textDim}
+            placeholderTextColor={colors.textDim}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -109,7 +113,7 @@ export default function LoginScreen() {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color={Colors.background} />
+              <ActivityIndicator color={isDark ? colors.background : '#FFFFFF'} />
             ) : (
               <Text style={styles.buttonPrimaryText}>Sign In to Wallet</Text>
             )}
@@ -134,100 +138,104 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: Tokens.spacing.lg,
-  },
-  headerContainer: {
-    marginBottom: Tokens.spacing.xl,
-    alignItems: 'center',
-  },
-  logo: {
-    width: 88,
-    height: 88,
-    borderRadius: 22,
-    marginBottom: Tokens.spacing.md,
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: Colors.textWhite,
-    letterSpacing: -1,
-  },
-  titleAccent: {
-    color: Colors.primary,
-  },
-  subtitle: {
-    ...Tokens.typography.body,
-    color: Colors.textMuted,
-    marginTop: Tokens.spacing.xs,
-    textAlign: 'center',
-  },
-  card: {
-    ...Tokens.card,
-    padding: Tokens.spacing.lg,
-  },
-  label: {
-    ...Tokens.typography.caption,
-    color: Colors.textLight,
-    marginBottom: Tokens.spacing.xs,
-    textTransform: 'uppercase',
-  },
-  input: {
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Tokens.radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    color: Colors.textWhite,
-    paddingHorizontal: Tokens.spacing.md,
-    paddingVertical: 12,
-    fontSize: 16,
-    marginBottom: Tokens.spacing.md,
-  },
-  buttonPrimary: {
-    backgroundColor: Colors.primary,
-    borderRadius: Tokens.radius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: Tokens.spacing.sm,
-  },
-  buttonPrimaryText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.background,
-  },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: Tokens.spacing.lg,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: Colors.border,
-  },
-  dividerText: {
-    ...Tokens.typography.caption,
-    color: Colors.textDim,
-    marginHorizontal: Tokens.spacing.md,
-  },
-  buttonGoogle: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: Colors.borderGlow,
-    borderRadius: Tokens.radius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  buttonGoogleText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.textWhite,
-  },
-});
+const createStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      flex: 1,
+      justifyContent: 'center',
+      paddingHorizontal: Tokens.spacing.lg,
+    },
+    headerContainer: {
+      marginBottom: Tokens.spacing.xl,
+      alignItems: 'center',
+    },
+    logo: {
+      width: 88,
+      height: 88,
+      borderRadius: 22,
+      marginBottom: Tokens.spacing.md,
+    },
+    title: {
+      fontSize: 36,
+      fontWeight: '800',
+      color: colors.textWhite,
+      letterSpacing: -1,
+    },
+    titleAccent: {
+      color: colors.primary,
+    },
+    subtitle: {
+      ...Tokens.typography.body,
+      color: colors.textMuted,
+      marginTop: Tokens.spacing.xs,
+      textAlign: 'center',
+    },
+    card: {
+      ...Tokens.card,
+      backgroundColor: colors.surfaceCard,
+      borderColor: colors.border,
+      shadowColor: isDark ? colors.primary : 'rgba(0, 0, 0, 0.08)',
+      padding: Tokens.spacing.lg,
+    },
+    label: {
+      ...Tokens.typography.caption,
+      color: colors.textLight,
+      marginBottom: Tokens.spacing.xs,
+      textTransform: 'uppercase',
+    },
+    input: {
+      backgroundColor: colors.surfaceElevated,
+      borderRadius: Tokens.radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      color: colors.textWhite,
+      paddingHorizontal: Tokens.spacing.md,
+      paddingVertical: 12,
+      fontSize: 16,
+      marginBottom: Tokens.spacing.md,
+    },
+    buttonPrimary: {
+      backgroundColor: colors.primary,
+      borderRadius: Tokens.radius.md,
+      paddingVertical: 14,
+      alignItems: 'center',
+      marginTop: Tokens.spacing.sm,
+    },
+    buttonPrimaryText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: isDark ? colors.background : '#FFFFFF',
+    },
+    dividerContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: Tokens.spacing.lg,
+    },
+    dividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: colors.border,
+    },
+    dividerText: {
+      ...Tokens.typography.caption,
+      color: colors.textDim,
+      marginHorizontal: Tokens.spacing.md,
+    },
+    buttonGoogle: {
+      backgroundColor: colors.surfaceElevated,
+      borderWidth: 1,
+      borderColor: colors.borderGlow,
+      borderRadius: Tokens.radius.md,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    buttonGoogleText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.textWhite,
+    },
+  });

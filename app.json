@@ -4,7 +4,7 @@
     "slug": "orgwallet",
     "version": "0.4.4",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "scheme": "orgwallet",
     "icon": "./assets/icon.png",
     "splash": {

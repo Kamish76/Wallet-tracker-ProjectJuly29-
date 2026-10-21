@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,8 +15,10 @@ import { useFocusEffect } from 'expo-router';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
-import { Colors } from '@/theme/colors';
+import { WidgetService } from '@/lib/widget/widgetService';
+import { useTheme } from '@/theme/ThemeContext';
 import { Tokens } from '@/theme/tokens';
+import type { ThemeColors } from '@/theme/colors';
 import { generateUUID } from '@/lib/utils/uuid';
 import { formatCurrency } from '@/lib/utils/currency';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
@@ -25,6 +27,9 @@ import type { WalletAccount } from '@/types/wallet';
 import type { AccountWithBalance } from '@/lib/utils/balance';
 
 export default function AccountsScreen() {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [accounts, setAccounts] = useState<AccountWithBalance[]>([]);
   const [showArchived, setShowArchived] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -54,6 +59,7 @@ export default function AccountsScreen() {
     const withBalances = await OfflineDatabase.getAccountsWithBalances(organizationId, archived);
     setAccounts(withBalances);
     setIsLoading(false);
+    WidgetService.refreshWidgetData(organizationId).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -68,7 +74,6 @@ export default function AccountsScreen() {
     init();
   }, [showArchived, loadLocalAccounts]);
 
-  // 1. Subscribe to SyncEngine notifications so accounts update automatically after sync
   useEffect(() => {
     const unsubscribe = SyncEngine.subscribe((queueCount, isSyncing) => {
       if (!isSyncing && orgId) {
@@ -78,7 +83,6 @@ export default function AccountsScreen() {
     return () => unsubscribe();
   }, [orgId, showArchived, loadLocalAccounts]);
 
-  // 2. Refresh data whenever user navigates back to Accounts tab
   useFocusEffect(
     useCallback(() => {
       if (orgId) {
@@ -96,135 +100,53 @@ export default function AccountsScreen() {
     }
     const valValidation = SecurityService.validateAmount(startingVal, { min: -100_000_000, max: 1_000_000_000 });
     if (!valValidation.isValid) {
-      Alert.alert('Error', valValidation.error || 'Please enter a valid starting balance.');
+      Alert.alert('Error', valValidation.error || 'Please enter a valid numeric starting value.');
       return;
     }
-
-    const limitCheck = await RateLimiter.checkLimit('mutation:create', RateLimitPolicies.MUTATION_CREATE);
-    if (!limitCheck.allowed) {
-      Alert.alert('Rate Limit Exceeded', `Too many requests. Please try again in ${limitCheck.retryAfterSeconds} seconds.`);
-      return;
-    }
-    await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+    const parsedVal = valValidation.value;
 
     setSaving(true);
     try {
       if (editingAccount) {
-        const updatedAcc: WalletAccount = {
-          id: editingAccount.id,
-          organization_id: orgId,
+        const updated: WalletAccount = {
+          ...editingAccount,
           name: sanitizedName,
-          starting_value: valValidation.value,
-          is_active: editingAccount.is_active,
-          created_at: editingAccount.created_at,
-          updated_at: new Date().toISOString(),
+          starting_value: parsedVal,
         };
-
-        await OfflineDatabase.upsertAccount(updatedAcc, 'pending');
-        await OfflineDatabase.enqueueMutation('UPDATE_ACCOUNT', updatedAcc);
-
-        if (SyncEngine.getOnlineStatus()) {
-          SyncEngine.syncNow(orgId);
-        }
-
-        setModalVisible(false);
-        setEditingAccount(null);
-        await loadLocalAccounts(orgId, showArchived);
+        await OfflineDatabase.upsertAccount(updated, 'pending');
+        await OfflineDatabase.enqueueMutation('UPDATE_ACCOUNT', updated);
       } else {
-        const newAcc: WalletAccount = {
+        const newAccount: WalletAccount = {
           id: generateUUID(),
           organization_id: orgId,
           name: sanitizedName,
-          starting_value: valValidation.value,
+          starting_value: parsedVal,
           is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
-
-        await OfflineDatabase.upsertAccount(newAcc, 'pending');
-        await OfflineDatabase.enqueueMutation('CREATE_ACCOUNT', newAcc);
-
-        if (SyncEngine.getOnlineStatus()) {
-          SyncEngine.syncNow(orgId);
-        }
-
-        setAccName('');
-        setStartingVal('0');
-        setModalVisible(false);
-        await loadLocalAccounts(orgId, showArchived);
+        await OfflineDatabase.upsertAccount(newAccount, 'pending');
+        await OfflineDatabase.enqueueMutation('CREATE_ACCOUNT', newAccount);
       }
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to save account.');
+
+      setModalVisible(false);
+      await loadLocalAccounts(orgId, showArchived);
+      WidgetService.refreshWidgetData(orgId).catch(() => {});
+
+      if (SyncEngine.getOnlineStatus()) {
+        SyncEngine.syncNow(orgId);
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Failed to save account.');
     } finally {
       setSaving(false);
     }
   };
 
-  // Rule #2 Safeguard: Never delete an account if referenced by any transactions
-  const handleDeleteAccount = (account: AccountWithBalance) => {
-    if (account.transaction_count > 0) {
-      Alert.alert(
-        'Cannot Delete Sub-Account',
-        `"${account.name}" is referenced by ${account.transaction_count} historical transaction(s) and cannot be permanently deleted. You can archive it instead.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: account.is_active ? 'Archive Sub-Account' : 'OK',
-            style: 'default',
-            onPress: () => {
-              if (account.is_active) {
-                setModalVisible(false);
-                setEditingAccount(null);
-                handleArchiveAccount(account);
-              }
-            },
-          },
-        ]
-      );
-      return;
-    }
-
-    Alert.alert(
-      'Delete Sub-Account',
-      `Are you sure you want to permanently delete "${account.name}"? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            if (!orgId) return;
-            setSaving(true);
-            try {
-              await OfflineDatabase.deleteAccount(account.id, orgId);
-              await OfflineDatabase.enqueueMutation('DELETE_ACCOUNT', {
-                id: account.id,
-                organization_id: orgId,
-              });
-
-              if (SyncEngine.getOnlineStatus()) {
-                SyncEngine.syncNow(orgId);
-              }
-
-              setModalVisible(false);
-              setEditingAccount(null);
-              await loadLocalAccounts(orgId, showArchived);
-            } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to delete account.');
-            } finally {
-              setSaving(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  // Rule #2 Safeguard: Require Archive instead of Hard Delete
   const handleArchiveAccount = (account: WalletAccount) => {
     Alert.alert(
       'Archive Sub-Account',
-      `Are you sure you want to archive "${account.name}"? Historical transactions referencing this account will be safely preserved.`,
+      `Are you sure you want to archive "${account.name}"? It will be hidden from default views.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -234,15 +156,65 @@ export default function AccountsScreen() {
             if (!orgId) return;
             const updated = { ...account, is_active: false };
             await OfflineDatabase.upsertAccount(updated, 'pending');
-            await OfflineDatabase.enqueueMutation('ARCHIVE_ACCOUNT', {
-              id: account.id,
-              organization_id: orgId,
-            });
+            await OfflineDatabase.enqueueMutation('UPDATE_ACCOUNT', updated);
 
             if (SyncEngine.getOnlineStatus()) {
               SyncEngine.syncNow(orgId);
             }
             await loadLocalAccounts(orgId, showArchived);
+            WidgetService.refreshWidgetData(orgId).catch(() => {});
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAccount = (account: AccountWithBalance) => {
+    if (account.transaction_count > 0) {
+      Alert.alert(
+        'Cannot Delete Account',
+        `"${account.name}" is referenced by ${account.transaction_count} transaction${
+          account.transaction_count === 1 ? '' : 's'
+        }. To preserve historical balance integrity, you must archive this account instead of deleting it.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Archive Account',
+            onPress: () => {
+              setModalVisible(false);
+              handleArchiveAccount(account);
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Delete Sub-Account',
+      `Permanently delete "${account.name}"? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Permanently',
+          style: 'destructive',
+          onPress: async () => {
+            if (!orgId) return;
+            try {
+              await OfflineDatabase.deleteAccount(account.id, orgId);
+              await OfflineDatabase.enqueueMutation('DELETE_ACCOUNT', { id: account.id });
+
+              setModalVisible(false);
+              setEditingAccount(null);
+              await loadLocalAccounts(orgId, showArchived);
+              WidgetService.refreshWidgetData(orgId).catch(() => {});
+
+              if (SyncEngine.getOnlineStatus()) {
+                SyncEngine.syncNow(orgId);
+              }
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Failed to delete account.');
+            }
           },
         },
       ]
@@ -268,6 +240,7 @@ export default function AccountsScreen() {
               SyncEngine.syncNow(orgId);
             }
             await loadLocalAccounts(orgId, showArchived);
+            WidgetService.refreshWidgetData(orgId).catch(() => {});
           },
         },
       ]
@@ -283,7 +256,7 @@ export default function AccountsScreen() {
           style={styles.addButton}
           onPress={openCreateModal}
         >
-          <Plus size={18} color={Colors.background} />
+          <Plus size={18} color={isDark ? colors.background : '#FFFFFF'} />
           <Text style={styles.addButtonText}>Add</Text>
         </TouchableOpacity>
       </View>
@@ -305,7 +278,7 @@ export default function AccountsScreen() {
       <ScrollView style={styles.listContainer}>
         {isLoading ? (
           <View style={styles.emptyCard}>
-            <ActivityIndicator size="large" color={Colors.primary} />
+            <ActivityIndicator size="large" color={colors.primary} />
           </View>
         ) : accounts.length === 0 ? (
           <View style={styles.emptyCard}>
@@ -321,7 +294,7 @@ export default function AccountsScreen() {
             >
               <View style={styles.cardLeft}>
                 <View style={styles.iconBox}>
-                  <WalletIcon size={20} color={acc.is_active ? Colors.primary : Colors.textDim} />
+                  <WalletIcon size={20} color={acc.is_active ? colors.primary : colors.textDim} />
                 </View>
                 <View>
                   <Text style={styles.accName}>
@@ -338,14 +311,14 @@ export default function AccountsScreen() {
                   style={styles.actionBtn}
                   onPress={() => openEditModal(acc)}
                 >
-                  <Edit2 size={16} color={Colors.textMuted} />
+                  <Edit2 size={16} color={colors.textMuted} />
                 </TouchableOpacity>
                 {acc.is_active && (
                   <TouchableOpacity
                     style={styles.actionBtn}
                     onPress={() => handleArchiveAccount(acc)}
                   >
-                    <Archive size={16} color={Colors.textMuted} />
+                    <Archive size={16} color={colors.textMuted} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -368,7 +341,7 @@ export default function AccountsScreen() {
                   setEditingAccount(null);
                 }}
               >
-                <X size={22} color={Colors.textMuted} />
+                <X size={22} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -376,7 +349,7 @@ export default function AccountsScreen() {
             <TextInput
               style={styles.input}
               placeholder="e.g. Cash, Checking, Mobile Wallet"
-              placeholderTextColor={Colors.textDim}
+              placeholderTextColor={colors.textDim}
               value={accName}
               onChangeText={setAccName}
             />
@@ -385,7 +358,7 @@ export default function AccountsScreen() {
             <TextInput
               style={styles.input}
               placeholder="0.00"
-              placeholderTextColor={Colors.textDim}
+              placeholderTextColor={colors.textDim}
               keyboardType="decimal-pad"
               value={startingVal}
               onChangeText={setStartingVal}
@@ -417,7 +390,7 @@ export default function AccountsScreen() {
                   }}
                   disabled={saving}
                 >
-                  <Archive size={18} color={Colors.textMuted} style={{ marginRight: 8 }} />
+                  <Archive size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
                   <Text style={styles.archiveModalButtonText}>
                     {editingAccount.is_active ? 'Archive Sub-Account' : 'Unarchive Sub-Account'}
                   </Text>
@@ -431,7 +404,7 @@ export default function AccountsScreen() {
                   onPress={() => handleDeleteAccount(editingAccount)}
                   disabled={saving}
                 >
-                  <Trash2 size={18} color={Colors.error} style={{ marginRight: 8 }} />
+                  <Trash2 size={18} color={colors.error} style={{ marginRight: 8 }} />
                   <Text style={styles.deleteButtonText}>Delete Sub-Account</Text>
                 </TouchableOpacity>
                 {editingAccount.transaction_count > 0 && (
@@ -448,218 +421,225 @@ export default function AccountsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    padding: Tokens.spacing.md,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Tokens.spacing.md,
-    paddingTop: Tokens.spacing.sm,
-  },
-  title: {
-    ...Tokens.typography.h1,
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: Tokens.radius.full,
-  },
-  addButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.background,
-    marginLeft: 4,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Tokens.spacing.md,
-  },
-  toggleLabel: {
-    ...Tokens.typography.caption,
-    color: Colors.textMuted,
-  },
-  toggleBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: Tokens.radius.full,
-    backgroundColor: Colors.surfaceElevated,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  toggleBtnActive: {
-    backgroundColor: Colors.secondary,
-    borderColor: Colors.secondary,
-  },
-  toggleBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textMuted,
-  },
-  toggleBtnTextActive: {
-    color: Colors.background,
-  },
-  listContainer: {
-    flex: 1,
-  },
-  card: {
-    ...Tokens.card,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Tokens.spacing.sm,
-  },
-  cardArchived: {
-    opacity: 0.6,
-    borderColor: Colors.border,
-  },
-  cardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  iconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.surfaceElevated,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: Tokens.spacing.md,
-  },
-  accName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  accBalanceLarge: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.textWhite,
-    marginTop: 2,
-  },
-  archiveBtn: {
-    padding: 8,
-  },
-  emptyCard: {
-    ...Tokens.card,
-    alignItems: 'center',
-    padding: Tokens.spacing.xl,
-  },
-  emptyText: {
-    ...Tokens.typography.body,
-    color: Colors.textMuted,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: Colors.overlay,
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: Tokens.radius.xl,
-    borderTopRightRadius: Tokens.radius.xl,
-    padding: Tokens.spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.borderGlow,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Tokens.spacing.lg,
-  },
-  modalTitle: {
-    ...Tokens.typography.h2,
-  },
-  inputLabel: {
-    ...Tokens.typography.caption,
-    color: Colors.textLight,
-    marginBottom: 6,
-    marginTop: 10,
-  },
-  input: {
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Tokens.radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    color: Colors.textWhite,
-    paddingHorizontal: Tokens.spacing.md,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  saveButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: Tokens.radius.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: Tokens.spacing.lg,
-  },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.background,
-  },
-  cardActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionBtn: {
-    padding: 8,
-    marginLeft: 4,
-  },
-  modalActions: {
-    marginTop: Tokens.spacing.md,
-  },
-  archiveModalButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surfaceElevated,
-    borderRadius: Tokens.radius.md,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: Tokens.spacing.sm,
-  },
-  archiveModalButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.textMuted,
-  },
-  deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.errorBg,
-    borderRadius: Tokens.radius.md,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: Colors.errorBorder,
-  },
-  deleteButtonDisabled: {
-    opacity: 0.6,
-  },
-  deleteButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.error,
-  },
-  safeguardHintText: {
-    ...Tokens.typography.caption,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    marginTop: 6,
-  },
-});
-
+const createStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      padding: Tokens.spacing.md,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Tokens.spacing.md,
+      paddingTop: Tokens.spacing.sm,
+    },
+    title: {
+      ...Tokens.typography.h1,
+      color: colors.textWhite,
+    },
+    addButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: Tokens.radius.full,
+    },
+    addButtonText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: isDark ? colors.background : '#FFFFFF',
+      marginLeft: 4,
+    },
+    toggleRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Tokens.spacing.md,
+    },
+    toggleLabel: {
+      ...Tokens.typography.caption,
+      color: colors.textMuted,
+    },
+    toggleBtn: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: Tokens.radius.full,
+      backgroundColor: colors.surfaceElevated,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    toggleBtnActive: {
+      backgroundColor: colors.secondary,
+      borderColor: colors.secondary,
+    },
+    toggleBtnText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textMuted,
+    },
+    toggleBtnTextActive: {
+      color: isDark ? colors.background : '#FFFFFF',
+    },
+    listContainer: {
+      flex: 1,
+    },
+    card: {
+      ...Tokens.card,
+      backgroundColor: colors.surfaceCard,
+      borderColor: colors.border,
+      shadowColor: isDark ? colors.primary : 'rgba(0, 0, 0, 0.06)',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Tokens.spacing.sm,
+    },
+    cardArchived: {
+      opacity: 0.6,
+      borderColor: colors.border,
+    },
+    cardLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    iconBox: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.surfaceElevated,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: Tokens.spacing.md,
+    },
+    accName: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    accBalanceLarge: {
+      fontSize: 22,
+      fontWeight: '700',
+      color: colors.textWhite,
+      marginTop: 2,
+    },
+    archiveBtn: {
+      padding: 8,
+    },
+    emptyCard: {
+      ...Tokens.card,
+      backgroundColor: colors.surfaceCard,
+      borderColor: colors.border,
+      alignItems: 'center',
+      padding: Tokens.spacing.xl,
+    },
+    emptyText: {
+      ...Tokens.typography.body,
+      color: colors.textMuted,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: colors.overlay,
+      justifyContent: 'flex-end',
+    },
+    modalCard: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: Tokens.radius.xl,
+      borderTopRightRadius: Tokens.radius.xl,
+      padding: Tokens.spacing.lg,
+      borderWidth: 1,
+      borderColor: colors.borderGlow,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Tokens.spacing.lg,
+    },
+    modalTitle: {
+      ...Tokens.typography.h2,
+      color: colors.textWhite,
+    },
+    inputLabel: {
+      ...Tokens.typography.caption,
+      color: colors.textLight,
+      marginBottom: 6,
+      marginTop: 10,
+    },
+    input: {
+      backgroundColor: colors.surfaceElevated,
+      borderRadius: Tokens.radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      color: colors.textWhite,
+      paddingHorizontal: Tokens.spacing.md,
+      paddingVertical: 10,
+      fontSize: 15,
+    },
+    saveButton: {
+      backgroundColor: colors.primary,
+      borderRadius: Tokens.radius.md,
+      paddingVertical: 14,
+      alignItems: 'center',
+      marginTop: Tokens.spacing.lg,
+    },
+    saveButtonText: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: isDark ? colors.background : '#FFFFFF',
+    },
+    cardActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    actionBtn: {
+      padding: 8,
+      marginLeft: 4,
+    },
+    modalActions: {
+      marginTop: Tokens.spacing.md,
+    },
+    archiveModalButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.surfaceElevated,
+      borderRadius: Tokens.radius.md,
+      paddingVertical: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: Tokens.spacing.sm,
+    },
+    archiveModalButtonText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.textMuted,
+    },
+    deleteButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.errorBg,
+      borderRadius: Tokens.radius.md,
+      paddingVertical: 14,
+      borderWidth: 1,
+      borderColor: colors.errorBorder,
+    },
+    deleteButtonDisabled: {
+      opacity: 0.6,
+    },
+    deleteButtonText: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.error,
+    },
+    safeguardHintText: {
+      ...Tokens.typography.caption,
+      color: colors.textMuted,
+      textAlign: 'center',
+      marginTop: 6,
+    },
+  });

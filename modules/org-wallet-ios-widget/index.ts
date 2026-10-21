@@ -4,7 +4,7 @@ import { requireOptionalNativeModule } from 'expo-modules-core';
 export const IOS_APP_GROUP = 'group.com.kamish.orgfinance';
 
 interface OrgWalletIosWidgetNativeModule {
-  setWidgetData(balance: string, opacity: number, appGroup?: string): Promise<boolean>;
+  setWidgetData(balance: string, opacity: number, theme?: string, isDark?: boolean, appGroup?: string): Promise<boolean>;
   clearWidgetData(appGroup?: string): Promise<boolean>;
   reloadWidget(): Promise<boolean>;
 }
@@ -18,13 +18,15 @@ export class OrgWalletIosWidget {
   public static async setWidgetData(
     balance: string,
     opacity: number,
+    theme: string = 'auto',
+    isDark?: boolean,
     appGroup: string = IOS_APP_GROUP
   ): Promise<boolean> {
     if (Platform.OS !== 'ios' || !nativeModule) {
       return false;
     }
     try {
-      return await nativeModule.setWidgetData(balance, opacity, appGroup);
+      return await nativeModule.setWidgetData(balance, opacity, theme, isDark, appGroup);
     } catch (error) {
       console.log('[OrgWalletIosWidget] Notice during setWidgetData:', error);
       return false;

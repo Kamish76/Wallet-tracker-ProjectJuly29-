@@ -240,15 +240,15 @@ export class WalletAuthService {
   // --- Rule #2: Personal Wallet Resolution & Auto-Spawning ---
   public static async resolveUserWallet(userId: string): Promise<{ organizationId: string; currency: string; createdNew: boolean }> {
     const cachedId = await this.getCachedOrgIdAsync();
-    const cachedCurrency = await this.getCachedCurrencyAsync();
     if (cachedId) {
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
-        SyncEngine.firstTimeAutoSync(cachedId).catch((e) =>
+        await SyncEngine.firstTimeAutoSync(cachedId).catch((e) =>
           console.warn('[WalletAuthService] Background sync failed:', e)
         );
       }
-      return { organizationId: cachedId, currency: cachedCurrency, createdNew: false };
+      const latestCurrency = await this.getCachedCurrencyAsync();
+      return { organizationId: cachedId, currency: latestCurrency, createdNew: false };
     }
 
     // Step 1: Query organizations owned by this specific userId OR where userId is an active member
@@ -288,11 +288,12 @@ export class WalletAuthService {
           await this.updateCachedCurrency(org.currency || 'USD');
           if (!this.hasPulledInitialData) {
             this.hasPulledInitialData = true;
-            SyncEngine.firstTimeAutoSync(org.id).catch((e) =>
+            await SyncEngine.firstTimeAutoSync(org.id).catch((e) =>
               console.warn('[WalletAuthService] Background sync failed:', e)
             );
           }
-          return { organizationId: org.id, currency: org.currency || 'USD', createdNew: false };
+          const latestCurrency = await this.getCachedCurrencyAsync();
+          return { organizationId: org.id, currency: latestCurrency || org.currency || 'USD', createdNew: false };
         }
       }
 
@@ -303,11 +304,12 @@ export class WalletAuthService {
       await this.updateCachedCurrency(firstOrg.currency || 'USD');
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
-        SyncEngine.firstTimeAutoSync(firstOrg.id).catch((e) =>
+        await SyncEngine.firstTimeAutoSync(firstOrg.id).catch((e) =>
           console.warn('[WalletAuthService] Background sync failed:', e)
         );
       }
-      return { organizationId: firstOrg.id, currency: firstOrg.currency || 'USD', createdNew: false };
+      const latestCurrency = await this.getCachedCurrencyAsync();
+      return { organizationId: firstOrg.id, currency: latestCurrency || firstOrg.currency || 'USD', createdNew: false };
     }
 
     // Step 2: Rule #2 Auto-Create Personal Wallet & Spawn Default 'Cash' Account (Only if user has 0 organizations!)
@@ -366,4 +368,70 @@ export class WalletAuthService {
     );
     return { organizationId: newOrg.id, currency: 'USD', createdNew: true };
   }
+
+  // --- Account Deletion Support (Apple 5.1.1(v) & Google Play Store Compliance) ---
+  public static async getPendingAccountDeletion(userId: string) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('account_deletion_requests')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .order('requested_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('[WalletAuthService] Notice checking account deletion request:', error.message);
+        return null;
+      }
+      return data;
+    } catch (e) {
+      console.warn('[WalletAuthService] Exception checking account deletion request:', e);
+      return null;
+    }
+  }
+
+  public static async requestAccountDeletion(userId: string, email: string, reason?: string) {
+    const scheduledDate = new Date();
+    scheduledDate.setDate(scheduledDate.getDate() + 30);
+
+    const { data, error } = await supabaseAdmin
+      .from('account_deletion_requests')
+      .insert({
+        user_id: userId,
+        email: email || '',
+        reason: reason || 'In-app account deletion requested from OrgWallet mobile',
+        status: 'pending',
+        scheduled_deletion_at: scheduledDate.toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  public static async cancelAccountDeletion(requestId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('account_deletion_requests')
+      .update({
+        status: 'cancelled',
+        cancelled_at: new Date().toISOString(),
+      })
+      .eq('id', requestId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
 }
+
+// Auto-scrub local database on SIGNED_OUT or session invalidation/expiry
+supabase.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
+    console.log('[WalletAuthService] Session ended or expired. Scrubbing local user database.');
+    await WalletAuthService.clearAllUserData();
+  }
+});

@@ -17,7 +17,8 @@ import { X, Plus, Delete, AlertCircle, ChevronDown } from 'lucide-react-native';
 import { evaluateMathExpression } from '@/lib/utils/math';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
-import { Colors } from '@/theme/colors';
+import { Colors, type ThemeColors } from '@/theme/colors';
+import { useTheme } from '@/theme/ThemeContext';
 import { Tokens } from '@/theme/tokens';
 import { generateUUID } from '@/lib/utils/uuid';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
@@ -47,6 +48,9 @@ export function AddTransactionModal({
   initialType,
   currency = 'USD',
 }: AddTransactionModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [txType, setTxType] = useState<TransactionType>('expense_personal');
   const [displayExpr, setDisplayExpr] = useState('0');
   const [accountId, setAccountId] = useState('');
@@ -324,7 +328,7 @@ export function AddTransactionModal({
                 onClose();
               }}
             >
-              <X size={22} color={Colors.textMuted} />
+              <X size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -389,7 +393,7 @@ export function AddTransactionModal({
                 <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 12 }}>
                   <Text style={[
                     styles.displayText,
-                    txType === 'income' ? { color: Colors.success } : txType === 'expense_personal' ? { color: Colors.error } : { color: Colors.offline }
+                    txType === 'income' ? { color: colors.income } : txType === 'expense_personal' ? { color: colors.expense } : { color: colors.offline }
                   ]}>
                     {displayExpr}
                   </Text>
@@ -398,12 +402,12 @@ export function AddTransactionModal({
                   )}
                 </View>
                 <TouchableOpacity onPress={() => handleKeypadPress('BACKSPACE')} onLongPress={() => setDisplayExpr('0')} style={styles.backspaceBtn}>
-                  <Delete size={24} color={Colors.textLight} />
+                  <Delete size={24} color={colors.textLight} />
                 </TouchableOpacity>
               </View>
               {evaluatedAmount < 0 && (
                 <View style={styles.warningRow}>
-                  <AlertCircle size={14} color={Colors.offline} />
+                  <AlertCircle size={14} color={colors.offline} />
                   <Text style={styles.warningText}>Negative result will be recorded as a positive value</Text>
                 </View>
               )}
@@ -423,7 +427,7 @@ export function AddTransactionModal({
                 <Text style={styles.selectorButtonText} numberOfLines={1}>
                   {accounts.find(a => a.id === accountId)?.name || 'Select Account'}
                 </Text>
-                <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
+                <ChevronDown size={16} color={colors.textLight} style={{ position: 'absolute', right: 12 }} />
               </TouchableOpacity>
             </View>
 
@@ -441,7 +445,7 @@ export function AddTransactionModal({
                   <Text style={styles.selectorButtonText} numberOfLines={1}>
                     {accounts.find(a => a.id === transferToId)?.name || 'Select Account'}
                   </Text>
-                  <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
+                  <ChevronDown size={16} color={colors.textLight} style={{ position: 'absolute', right: 12 }} />
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
@@ -451,7 +455,7 @@ export function AddTransactionModal({
                   <Text style={styles.selectorButtonText} numberOfLines={1}>
                     {category || 'Select Category'}
                   </Text>
-                  <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
+                  <ChevronDown size={16} color={colors.textLight} style={{ position: 'absolute', right: 12 }} />
                 </TouchableOpacity>
               )}
             </View>
@@ -525,7 +529,7 @@ export function AddTransactionModal({
                     setTimeout(() => toggleCategoryDropdown(), 50);
                   }}
                 >
-                  <Plus size={14} color={Colors.primary} />
+                  <Plus size={14} color={colors.primary} />
                   <Text style={styles.dropdownItemAddText}>+ Custom</Text>
                 </TouchableOpacity>
               </ScrollView>
@@ -537,7 +541,7 @@ export function AddTransactionModal({
               <TextInput
                 style={styles.customCategoryInput}
                 placeholder="Enter custom category name..."
-                placeholderTextColor={Colors.textDim}
+                placeholderTextColor={colors.textDim}
                 value={customCatName}
                 onChangeText={setCustomCatName}
                 maxLength={60}
@@ -560,7 +564,7 @@ export function AddTransactionModal({
           <TextInput
             style={styles.input}
             placeholder="Optional notes..."
-            placeholderTextColor={Colors.textDim}
+            placeholderTextColor={colors.textDim}
             value={notes}
             onChangeText={setNotes}
           />
@@ -615,19 +619,20 @@ export function AddTransactionModal({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: Colors.overlay,
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: Tokens.spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: colors.border,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -640,7 +645,7 @@ const styles = StyleSheet.create({
   },
   typeSelectorRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderRadius: Tokens.radius.full,
     padding: 4,
     marginBottom: Tokens.spacing.md,
@@ -652,28 +657,28 @@ const styles = StyleSheet.create({
     borderRadius: Tokens.radius.full,
   },
   typeBtnActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
   },
   typeBtnText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   typeBtnTextActive: {
-    color: Colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
   },
   inputLabel: {
     ...Tokens.typography.caption,
-    color: Colors.textLight,
+    color: colors.textLight,
     marginBottom: 6,
     marginTop: 10,
   },
   input: {
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderRadius: Tokens.radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
-    color: Colors.textWhite,
+    borderColor: colors.border,
+    color: colors.textWhite,
     paddingHorizontal: Tokens.spacing.md,
     paddingVertical: 10,
     fontSize: 15,
@@ -695,16 +700,16 @@ const styles = StyleSheet.create({
   },
   selectorLabel: {
     ...Tokens.typography.caption,
-    color: Colors.textLight,
+    color: colors.textLight,
     marginBottom: 6,
     textAlign: 'center',
     height: 18,
   },
   selectorButton: {
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderRadius: Tokens.radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     paddingHorizontal: 12,
     paddingVertical: 12,
     flexDirection: 'row',
@@ -714,24 +719,24 @@ const styles = StyleSheet.create({
   },
   selectorButtonText: {
     fontSize: 14,
-    color: Colors.textWhite,
+    color: colors.textWhite,
     fontWeight: '600',
     flex: 1,
     textAlign: 'center',
   },
   selectorButtonActive: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '15',
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '15',
   },
   dropdownList: {
     position: 'absolute',
     top: '100%',
     left: 0,
     right: 0,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Tokens.radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     marginTop: 4,
     maxHeight: 250,
     overflow: 'hidden',
@@ -749,22 +754,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceElevated,
+    borderBottomColor: colors.surfaceElevated,
   },
   dropdownItemActive: {
-    backgroundColor: Colors.secondary + '20',
+    backgroundColor: colors.secondary + '20',
   },
   dropdownItemText: {
     fontSize: 14,
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   dropdownItemTextActive: {
-    color: Colors.secondary,
+    color: colors.secondary,
     fontWeight: '600',
   },
   dropdownItemSubText: {
     fontSize: 12,
-    color: Colors.textDim,
+    color: colors.textDim,
   },
   dropdownItemAdd: {
     paddingHorizontal: 12,
@@ -775,33 +780,33 @@ const styles = StyleSheet.create({
   },
   dropdownItemAddText: {
     fontSize: 14,
-    color: Colors.primary,
+    color: colors.primary,
     fontWeight: '600',
   },
   accPill: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: Tokens.radius.full,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     marginRight: 8,
     marginBottom: 8,
   },
   accPillActive: {
-    backgroundColor: Colors.secondary,
-    borderColor: Colors.secondary,
+    backgroundColor: colors.secondary,
+    borderColor: colors.secondary,
   },
   accPillText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   accPillTextActive: {
-    color: Colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
   },
   saveButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     borderRadius: Tokens.radius.md,
     paddingVertical: 14,
     alignItems: 'center',
@@ -810,7 +815,7 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
   },
   categoryPillsContainer: {
     flexDirection: 'row',
@@ -822,29 +827,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: Tokens.radius.full,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   categoryPillSelected: {
-    backgroundColor: Colors.primaryDark,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primaryDark,
+    borderColor: colors.primary,
   },
   categoryPillText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   categoryPillTextSelected: {
-    color: Colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
   },
   addCategoryPill: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: Tokens.radius.full,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -852,7 +857,7 @@ const styles = StyleSheet.create({
   addCategoryPillText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.primary,
+    color: colors.primary,
   },
   customCategoryRow: {
     flexDirection: 'row',
@@ -862,17 +867,17 @@ const styles = StyleSheet.create({
   },
   customCategoryInput: {
     flex: 1,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Tokens.radius.md,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     paddingHorizontal: Tokens.spacing.md,
     paddingVertical: 10,
-    color: Colors.textWhite,
+    color: colors.textWhite,
     fontSize: 14,
   },
   customCategoryAddBtn: {
-    backgroundColor: Colors.primaryDark,
+    backgroundColor: colors.primaryDark,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: Tokens.radius.md,
@@ -881,7 +886,7 @@ const styles = StyleSheet.create({
   },
   customCategoryAddBtnText: {
     ...Tokens.typography.body,
-    color: Colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
     fontWeight: '700',
   },
   formScroll: {
@@ -889,10 +894,10 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   displayArea: {
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderRadius: Tokens.radius.lg,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     padding: Tokens.spacing.md,
     marginBottom: Tokens.spacing.md,
     marginTop: Tokens.spacing.xs,
@@ -908,12 +913,12 @@ const styles = StyleSheet.create({
   },
   evalText: {
     fontSize: 14,
-    color: Colors.textDim,
+    color: colors.textDim,
     marginTop: 2,
   },
   backspaceBtn: {
     padding: Tokens.spacing.sm,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Tokens.radius.md,
   },
   warningRow: {
@@ -923,17 +928,17 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: colors.border,
   },
   warningText: {
     fontSize: 12,
-    color: Colors.offline,
+    color: colors.offline,
   },
   keypad: {
     marginTop: Tokens.spacing.md,
     paddingTop: Tokens.spacing.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: colors.border,
     gap: 8,
   },
   keypadRow: {
@@ -942,31 +947,31 @@ const styles = StyleSheet.create({
   },
   keypadBtn: {
     flex: 1,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     height: 54,
     borderRadius: Tokens.radius.md,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   keypadBtnOp: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
   },
   keypadBtnEq: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primaryDark,
+    backgroundColor: colors.primary,
+    borderColor: colors.primaryDark,
   },
   keypadBtnText: {
     fontSize: 22,
     fontWeight: '500',
-    color: Colors.textWhite,
+    color: colors.textWhite,
   },
   keypadBtnTextOp: {
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   keypadBtnTextEq: {
-    color: Colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
     fontWeight: '700',
   },
 });

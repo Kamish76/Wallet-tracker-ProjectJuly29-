@@ -32,32 +32,31 @@ fi
 
 APP_SOURCE=""
 
-# Check if an existing .app or .xcarchive already exists
-if [ -d "$ARCHIVE_PATH/Products/Applications/$APP_NAME.app" ]; then
+if [ "$HAS_FULL_XCODE" = true ]; then
+  echo "🔨 Building fresh Release archive with Xcode (unsigned for SideStore)..."
+  rm -rf "$ARCHIVE_PATH"
+  mkdir -p "$BUILD_DIR"
+  
+  xcodebuild -workspace "ios/$APP_NAME.xcworkspace" \
+    -scheme "$SCHEME" \
+    -configuration "$CONFIGURATION" \
+    -sdk iphoneos \
+    -archivePath "$ARCHIVE_PATH" \
+    IPHONEOS_DEPLOYMENT_TARGET=15.1 \
+    CODE_SIGNING_ALLOWED=NO \
+    CODE_SIGNING_REQUIRED=NO \
+    CODE_SIGN_IDENTITY="" \
+    archive
+
   APP_SOURCE="$ARCHIVE_PATH/Products/Applications/$APP_NAME.app"
-  echo "✓ Found existing archive at: $ARCHIVE_PATH"
-elif [ -d "$BUILD_DIR/Release-iphoneos/$APP_NAME.app" ]; then
-  APP_SOURCE="$BUILD_DIR/Release-iphoneos/$APP_NAME.app"
-  echo "✓ Found existing build at: $APP_SOURCE"
-fi
-
-if [ -z "$APP_SOURCE" ]; then
-  if [ "$HAS_FULL_XCODE" = true ]; then
-    echo "🔨 Building Release archive with Xcode (unsigned for SideStore)..."
-    mkdir -p "$BUILD_DIR"
-    
-    xcodebuild -workspace "ios/$APP_NAME.xcworkspace" \
-      -scheme "$SCHEME" \
-      -configuration "$CONFIGURATION" \
-      -sdk iphoneos \
-      -archivePath "$ARCHIVE_PATH" \
-      IPHONEOS_DEPLOYMENT_TARGET=15.1 \
-      CODE_SIGNING_ALLOWED=NO \
-      CODE_SIGNING_REQUIRED=NO \
-      CODE_SIGN_IDENTITY="" \
-      archive
-
+else
+  # Fallback if an existing .app or .xcarchive was built on another machine
+  if [ -d "$ARCHIVE_PATH/Products/Applications/$APP_NAME.app" ]; then
     APP_SOURCE="$ARCHIVE_PATH/Products/Applications/$APP_NAME.app"
+    echo "✓ Found existing archive at: $ARCHIVE_PATH"
+  elif [ -d "$BUILD_DIR/Release-iphoneos/$APP_NAME.app" ]; then
+    APP_SOURCE="$BUILD_DIR/Release-iphoneos/$APP_NAME.app"
+    echo "✓ Found existing build at: $APP_SOURCE"
   else
     echo "⚠️ Full Xcode.app not detected on this Mac (Command Line Tools only)."
     echo ""
@@ -83,6 +82,18 @@ if [ -d "$APP_SOURCE" ]; then
   mkdir -p "$PAYLOAD_DIR"
 
   cp -R "$APP_SOURCE" "$PAYLOAD_DIR/"
+
+  # Embed App Group entitlements into the Mach-O binaries via ad-hoc codesign so SideStore (AltSign)
+  # detects com.apple.security.application-groups and provisions the shared App Group container.
+  if [ -d "$PAYLOAD_DIR/$APP_NAME.app/PlugIns/OrgWalletWidgetExtension.appex" ] && [ -f "$WORKSPACE_ROOT/ios/OrgWalletWidget/OrgWalletWidget.entitlements" ]; then
+    echo "🔏 Embedding App Group entitlements into OrgWalletWidgetExtension.appex..."
+    codesign --force --sign "-" --entitlements "$WORKSPACE_ROOT/ios/OrgWalletWidget/OrgWalletWidget.entitlements" "$PAYLOAD_DIR/$APP_NAME.app/PlugIns/OrgWalletWidgetExtension.appex"
+  fi
+
+  if [ -f "$WORKSPACE_ROOT/ios/OrgWallet/OrgWallet.entitlements" ]; then
+    echo "🔏 Embedding App Group entitlements into $APP_NAME.app..."
+    codesign --force --sign "-" --entitlements "$WORKSPACE_ROOT/ios/OrgWallet/OrgWallet.entitlements" "$PAYLOAD_DIR/$APP_NAME.app"
+  fi
 
   # Create .ipa
   zip -r -q -y "$OUTPUT_IPA" Payload

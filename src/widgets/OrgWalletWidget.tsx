@@ -5,6 +5,7 @@ import { Colors } from '@/theme/colors';
 export interface OrgWalletWidgetProps {
   balance: string;
   opacity: number; // 0.10 to 1.00
+  isDark?: boolean;
   width?: number;
   height?: number;
   isLoading?: boolean;
@@ -22,10 +23,12 @@ function getAndroidHexColor(opacity: number, baseHex: string = '202020'): ColorP
 export function OrgWalletWidget({
   balance = '₱0.00',
   opacity = 0.85,
+  isDark = true,
   width = 340,
   isLoading = false,
 }: OrgWalletWidgetProps) {
-  const backgroundColor = getAndroidHexColor(opacity, '202020');
+  const baseHex = isDark ? '202020' : 'FFFFFF';
+  const backgroundColor = getAndroidHexColor(opacity, baseHex);
 
   // Dynamic responsive styling based on Pixel widget width (dp)
   const isSmall = width < 270; // e.g. 1x3 widget
@@ -40,7 +43,18 @@ export function OrgWalletWidget({
 
   const displayLabel = isLoading ? 'All accounts • ⌛ Syncing' : 'All accounts';
   const displayBalance = balance === 'Loading...' ? '⌛ Loading...' : balance;
-  const balanceColor = isLoading && balance === 'Loading...' ? '#93C5FD' : '#FFFFFF';
+
+  const labelColor = isLoading ? '#60A5FA' : isDark ? '#D1D5DB' : '#64748B';
+  const balanceColor = isLoading && balance === 'Loading...' ? '#93C5FD' : isDark ? '#FFFFFF' : '#0F172A';
+
+  const expenseBg = isDark ? '#2A181C' : '#FFE4E6';
+  const expenseColor = (isDark ? Colors.expense : '#E11D48') as ColorProp;
+
+  const incomeBg = isDark ? '#10281F' : '#DCFCE7';
+  const incomeColor = (isDark ? Colors.income : '#059669') as ColorProp;
+
+  const transferBg = isDark ? '#142238' : '#DBEAFE';
+  const transferColor = (isDark ? Colors.syncing : '#2563EB') as ColorProp;
 
   return (
     <FlexWidget
@@ -56,7 +70,7 @@ export function OrgWalletWidget({
         paddingVertical: 8,
       }}
     >
-      {/* Left side: Account label & Balance (no credit card icon) */}
+      {/* Left side: Account label & Balance */}
       <FlexWidget
         style={{
           flex: 1,
@@ -74,7 +88,7 @@ export function OrgWalletWidget({
           text={displayLabel}
           style={{
             fontSize: labelFontSize,
-            color: isLoading ? '#60A5FA' : '#D1D5DB',
+            color: labelColor,
             fontWeight: isLoading ? 'bold' : 'normal',
           }}
         />
@@ -88,7 +102,7 @@ export function OrgWalletWidget({
         />
       </FlexWidget>
 
-      {/* Right side: Three bigger equally square Quick Action buttons with lesser space between them */}
+      {/* Right side: Three square Quick Action buttons */}
       <FlexWidget
         style={{
           flexDirection: 'row',
@@ -102,7 +116,7 @@ export function OrgWalletWidget({
             width: buttonSize,
             height: buttonSize,
             borderRadius: buttonRadius,
-            backgroundColor: '#2A181C',
+            backgroundColor: expenseBg,
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -115,7 +129,7 @@ export function OrgWalletWidget({
             text="↑"
             style={{
               fontSize: iconSize,
-              color: Colors.expense as ColorProp,
+              color: expenseColor,
               fontWeight: 'bold',
             }}
           />
@@ -128,7 +142,7 @@ export function OrgWalletWidget({
             height: buttonSize,
             marginLeft: buttonSpacing,
             borderRadius: buttonRadius,
-            backgroundColor: '#10281F',
+            backgroundColor: incomeBg,
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -141,7 +155,7 @@ export function OrgWalletWidget({
             text="↓"
             style={{
               fontSize: iconSize,
-              color: Colors.income as ColorProp,
+              color: incomeColor,
               fontWeight: 'bold',
             }}
           />
@@ -154,7 +168,7 @@ export function OrgWalletWidget({
             height: buttonSize,
             marginLeft: buttonSpacing,
             borderRadius: buttonRadius,
-            backgroundColor: '#142238',
+            backgroundColor: transferBg,
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -167,7 +181,7 @@ export function OrgWalletWidget({
             text="⇄"
             style={{
               fontSize: iconSize,
-              color: Colors.syncing as ColorProp,
+              color: transferColor,
               fontWeight: 'bold',
             }}
           />
