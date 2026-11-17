@@ -11,12 +11,13 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ArrowUpRight, ArrowDownRight, RefreshCw, Plus, ChevronLeft, ChevronRight, Wallet, Tag, Settings } from 'lucide-react-native';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { AddTransactionModal } from '@/components/AddTransactionModal';
 import { EditTransactionModal } from '@/components/EditTransactionModal';
+import { ManageCategoriesModal } from '@/components/ManageCategoriesModal';
 import { WidgetService } from '@/lib/widget/widgetService';
 import { useTheme } from '@/theme/ThemeContext';
 import { Tokens } from '@/theme/tokens';
@@ -39,6 +40,7 @@ export default function DashboardScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
+  const [categoriesModalVisible, setCategoriesModalVisible] = useState(false);
   const [selectedTx, setSelectedTx] = useState<WalletTransaction | null>(null);
   const [initialModalTxType, setInitialModalTxType] = useState<TransactionType | undefined>(undefined);
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
@@ -293,6 +295,48 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      {/* Net Period Stat */}
+      {(() => {
+        const monthlyNet = monthlyIncome - monthlyExpense;
+        const netColor = monthlyNet >= 0 ? colors.income : colors.expense;
+        return (
+          <View style={[styles.netStatCard, { borderColor: netColor }]}>
+            <Text style={styles.statLabel}>NET (MONTH)</Text>
+            <Text style={[styles.netStatValue, { color: netColor }]}>
+              {monthlyNet >= 0 ? '+' : '-'}{formatCurrency(Math.abs(monthlyNet), currency)}
+            </Text>
+          </View>
+        );
+      })()}
+
+      {/* Wallet Quick Actions */}
+      <View style={styles.quickActionsRow}>
+        <TouchableOpacity
+          style={styles.quickActionBtn}
+          onPress={() => router.push('/(tabs)/accounts')}
+          activeOpacity={0.75}
+        >
+          <Wallet size={16} color={colors.primary} />
+          <Text style={styles.quickActionText}>Sub-Accounts</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickActionBtn}
+          onPress={() => setCategoriesModalVisible(true)}
+          activeOpacity={0.75}
+        >
+          <Tag size={16} color={colors.primary} />
+          <Text style={styles.quickActionText}>Categories</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickActionBtn}
+          onPress={() => router.push('/(tabs)/settings')}
+          activeOpacity={0.75}
+        >
+          <Settings size={16} color={colors.primary} />
+          <Text style={styles.quickActionText}>Settings</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Month Selector for Transactions */}
       <View style={styles.monthSelectorRow}>
         <TouchableOpacity onPress={handlePrevMonth} style={styles.monthButton}>
@@ -409,6 +453,16 @@ export default function DashboardScreen() {
         transaction={selectedTx}
         currency={currency}
       />
+
+      {/* Quick-Access Categories Modal */}
+      <ManageCategoriesModal
+        visible={categoriesModalVisible}
+        onClose={() => setCategoriesModalVisible(false)}
+        orgId={orgId}
+        onCategoriesChanged={() => {
+          if (orgId) loadLocalData(orgId, undefined, 0);
+        }}
+      />
     </View>
   );
 }
@@ -515,6 +569,45 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
     statValue: {
       fontSize: 18,
       fontWeight: '700',
+    },
+    netStatCard: {
+      ...Tokens.card,
+      backgroundColor: colors.surfaceCard,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: Tokens.spacing.md,
+      paddingVertical: Tokens.spacing.sm + 2,
+      borderWidth: 1,
+      marginBottom: Tokens.spacing.md,
+      shadowColor: isDark ? colors.primary : 'rgba(0, 0, 0, 0.06)',
+    },
+    netStatValue: {
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    quickActionsRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: Tokens.spacing.sm,
+    },
+    quickActionBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      backgroundColor: colors.surfaceCard,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: Tokens.radius.md,
+      paddingVertical: 10,
+      paddingHorizontal: 8,
+    },
+    quickActionText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textLight,
     },
     sectionHeader: {
       flexDirection: 'row',
