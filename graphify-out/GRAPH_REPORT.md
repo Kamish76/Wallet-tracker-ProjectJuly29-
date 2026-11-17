@@ -1,15 +1,15 @@
-# Graph Report - Wallet-tracker-ProjectJuly29-  (2026-10-22)
+# Graph Report - Wallet-tracker-ProjectJuly29-  (2026-11-17)
 
 ## Corpus Check
 - cluster-only mode — file stats not available
 
 ## Summary
-- 460 nodes · 1150 edges · 23 communities (18 shown, 5 thin omitted)
+- 466 nodes · 1172 edges · 23 communities (19 shown, 4 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 15 edges (avg confidence: 0.88)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `726444ba`
+- Built from commit: `45f003f9`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -27,25 +27,25 @@
 - withIosWidget.js
 - app/_layout.tsx
 - compilerOptions
+- test-unit.mjs
 - scripts
 - OrgWallet Brand Identity (Dark Slate Wallet, Orange Sync Arrows & Analytics Bar Chart)
 - devDependencies
-- test-unit.mjs
 - MaterialTopTabs.tsx
 - Context & Architecture Routing (Graphify + Obsidian + ICM)
-- OrgWalletIosWidgetNativeModule
 - backgroundTask.ts
+- supabase.ts
 - package-ipa.sh
 
 ## God Nodes (most connected - your core abstractions)
 1. `OfflineDatabase` - 34 edges
 2. `useTheme()` - 31 edges
-3. `WalletAuthService` - 24 edges
-4. `EditTransactionModal()` - 23 edges
-5. `react` - 23 edges
-6. `react-native` - 23 edges
-7. `SyncEngine` - 22 edges
-8. `AddTransactionModal()` - 22 edges
+3. `EditTransactionModal()` - 25 edges
+4. `WalletAuthService` - 24 edges
+5. `AddTransactionModal()` - 24 edges
+6. `react` - 23 edges
+7. `react-native` - 23 edges
+8. `SyncEngine` - 22 edges
 9. `OrgWalletWidgetEntryView` - 20 edges
 10. `SettingsScreen()` - 20 edges
 
@@ -72,11 +72,11 @@
 - **Triad Context & Architecture Routing Workflow** — gemini_context_architecture_routing, gemini_graph_report, gemini_obsidian_devbrain, gemini_icm_staged_execution [EXTRACTED 1.00]
 - **Cross-Platform Mobile Release & Distribution Pipeline (Android & iOS)** — release_google_play_guide, ios_beta_release_plan_doc, changelog_v0_4_4, readme_orgwallet [INFERRED 0.95]
 
-## Communities (23 total, 5 thin omitted)
+## Communities (23 total, 4 thin omitted)
 
 ### Community 0 - "AddTransactionModal.tsx"
-Cohesion: 0.07
-Nodes (61): RFC-4122, RFC-5322, IOS_APP_GROUP, expo-linking, expo-router, lucide-react-native, react, react-native (+53 more)
+Cohesion: 0.08
+Nodes (58): RFC-4122, RFC-5322, expo-linking, expo-router, expo-sqlite, lucide-react-native, react, react-native (+50 more)
 
 ### Community 1 - "OfflineDatabase"
 Cohesion: 0.11
@@ -91,12 +91,12 @@ Cohesion: 0.05
 Nodes (38): backgroundColor, foregroundImage, monochromeImage, adaptiveIcon, icon, package, permissions, versionCode (+30 more)
 
 ### Community 4 - "WalletAuthService"
-Cohesion: 0.12
-Nodes (9): AuthCallbackScreen(), handleAuthCallback(), createStyles(), LoginScreen(), extractTokensFromUrl(), isWalletOrganization(), WalletAuthService, RateLimiter (+1 more)
+Cohesion: 0.10
+Nodes (11): AuthCallbackScreen(), handleAuthCallback(), createStyles(), LoginScreen(), createStyles(), SettingsScreen(), extractTokensFromUrl(), isWalletOrganization() (+3 more)
 
 ### Community 5 - "widgetService.ts"
-Cohesion: 0.15
-Nodes (9): OrgWalletIosWidget, react, react-native-android-widget, SettingsScreen(), WidgetService, getAndroidHexColor(), OrgWalletWidget(), OrgWalletWidgetProps (+1 more)
+Cohesion: 0.14
+Nodes (10): IOS_APP_GROUP, OrgWalletIosWidget, OrgWalletIosWidgetNativeModule, react, react-native-android-widget, WidgetService, getAndroidHexColor(), OrgWalletWidget() (+2 more)
 
 ### Community 6 - "dependencies"
 Cohesion: 0.07
@@ -130,15 +130,19 @@ Nodes (8): expo-status-bar, @react-native-community/netinfo, react-native-gestur
 Cohesion: 0.22
 Nodes (8): expo/tsconfig.base, compilerOptions, baseUrl, jsx, paths, strict, extends, include
 
-### Community 13 - "scripts"
+### Community 13 - "test-unit.mjs"
+Cohesion: 0.31
+Nodes (6): id, localSample, shiftedDate, shiftedIso, formatLocalDateInput(), mergeDateWithOriginalTime()
+
+### Community 14 - "scripts"
 Cohesion: 0.25
 Nodes (8): scripts, android, ios, package:ipa, start, test, typecheck, web
 
-### Community 14 - "OrgWallet Brand Identity (Dark Slate Wallet, Orange Sync Arrows & Analytics Bar Chart)"
+### Community 15 - "OrgWallet Brand Identity (Dark Slate Wallet, Orange Sync Arrows & Analytics Bar Chart)"
 Cohesion: 0.43
 Nodes (7): OrgWallet Android Adaptive Icon, OrgWallet Web Favicon, OrgWallet Brand Color Palette (Dark Slate & Vibrant Orange), OrgWallet Primary App Icon, Wallet Sync & Financial Analytics Visual Motif, OrgWallet Brand Identity (Dark Slate Wallet, Orange Sync Arrows & Analytics Bar Chart), OrgWallet Brand Logo
 
-### Community 15 - "devDependencies"
+### Community 16 - "devDependencies"
 Cohesion: 0.33
 Nodes (6): devDependencies, @babel/core, babel-preset-expo, @expo/ngrok, @types/react, typescript
 
@@ -146,28 +150,28 @@ Nodes (6): devDependencies, @babel/core, babel-preset-expo, @expo/ngrok, @types/
 Cohesion: 0.40
 Nodes (3): @react-navigation/material-top-tabs, MaterialTopTabs, { Navigator }
 
-### Community 20 - "backgroundTask.ts"
+### Community 19 - "backgroundTask.ts"
 Cohesion: 0.50
 Nodes (3): expo-background-task, expo-task-manager, BACKGROUND_SYNC_TASK
 
 ## Knowledge Gaps
-- **42 isolated node(s):** `RFC-5322`, `RFC-4122`, `expo/tsconfig.base`, `.activeContent`, `.balanceTextColor` (+37 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 182 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **5 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **42 isolated node(s):** `RFC-4122`, `RFC-5322`, `expo/tsconfig.base`, `.activeContent`, `.balanceTextColor` (+37 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 185 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `dependencies` connect `dependencies` to `widgetService.ts`, `package.json`?**
-  _High betweenness centrality (0.077) - this node is a cross-community bridge._
-- **What connects `RFC-5322`, `RFC-4122`, `expo/tsconfig.base` to the rest of the system?**
+  _High betweenness centrality (0.076) - this node is a cross-community bridge._
+- **What connects `RFC-4122`, `RFC-5322`, `expo/tsconfig.base` to the rest of the system?**
   _42 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `AddTransactionModal.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.07191919191919192 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07928331466965285 - nodes in this community are weakly interconnected._
 - **Why does `react-native` connect `AddTransactionModal.tsx` to `app/_layout.tsx`, `widgetService.ts`, `package.json`?**
   _High betweenness centrality (0.052) - this node is a cross-community bridge._
 - **Should `OfflineDatabase` be split into smaller, more focused modules?**
-  _Cohesion score 0.11152882205513784 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.11215538847117794 - nodes in this community are weakly interconnected._
 - **Why does `react` connect `AddTransactionModal.tsx` to `app/_layout.tsx`, `widgetService.ts`, `package.json`?**
   _High betweenness centrality (0.045) - this node is a cross-community bridge._
 - **Should `OrgWalletWidgetEntryView` be split into smaller, more focused modules?**

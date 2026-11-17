@@ -352,10 +352,31 @@ export class OfflineDatabase {
   public static async getCategories(orgId: string, type?: 'income' | 'expense'): Promise<WalletCategory[]> {
     return this.withLock(async () => {
       const db = await this.getDb();
-      const rows = await db.getAllAsync<any>(
-        `SELECT * FROM wallet_categories WHERE organization_id = ? ORDER BY created_at ASC;`,
-        [orgId ?? null]
-      );
+      const [rows, usageRows] = await Promise.all([
+        db.getAllAsync<any>(
+          `SELECT * FROM wallet_categories WHERE organization_id = ? ORDER BY created_at ASC;`,
+          [orgId ?? null]
+        ),
+        db.getAllAsync<{ category_id: string | null; category: string | null }>(
+          // shortcut: caps usage count scan at 10,000 rows; switch to SQL GROUP BY if local store exceeds 10k transactions
+          `SELECT category_id, category FROM local_transactions WHERE organization_id = ? AND (category_id IS NOT NULL OR category IS NOT NULL) LIMIT 10000;`,
+          [orgId ?? null]
+        ),
+      ]);
+
+      const idCounts = new Map<string, number>();
+      const nameCounts = new Map<string, number>();
+      for (const tx of usageRows || []) {
+        if (tx.category_id) {
+          idCounts.set(tx.category_id, (idCounts.get(tx.category_id) ?? 0) + 1);
+        } else if (tx.category) {
+          const key = tx.category.trim().toLowerCase();
+          if (key) {
+            nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+          }
+        }
+      }
+
       const categories: WalletCategory[] = (rows || []).map((r) => ({
         id: r.id,
         organization_id: r.organization_id,
@@ -374,6 +395,13 @@ export class OfflineDatabase {
         sync_status: r.sync_status,
         local_id: r.local_id,
       }));
+
+      const getUsage = (c: WalletCategory) =>
+        (idCounts.get(c.id) ?? 0) +
+        (nameCounts.get((c.normalized_name || c.display_name || '').trim().toLowerCase()) ?? 0);
+
+      categories.sort((a, b) => getUsage(b) - getUsage(a));
+
       if (type) {
         const tag = type === 'income' ? 'type:income' : 'type:expense';
         return categories.filter((c) => c.aliases.includes(tag));

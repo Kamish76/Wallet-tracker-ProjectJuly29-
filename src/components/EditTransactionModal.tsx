@@ -25,6 +25,7 @@ import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
 import { WidgetService } from '@/lib/widget/widgetService';
 import { formatCurrency } from '@/lib/utils/currency';
+import { formatLocalDateInput, mergeDateWithOriginalTime } from '@/lib/utils/date';
 import type { WalletAccount, WalletTransaction, TransactionType, WalletCategory } from '@/types/wallet';
 
 interface EditTransactionModalProps {
@@ -58,6 +59,7 @@ export function EditTransactionModal({
   const [transferToId, setTransferToId] = useState('');
   const [category, setCategory] = useState('');
   const [notes, setNotes] = useState('');
+  const [txDate, setTxDate] = useState('');
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState<WalletCategory[]>([]);
   const [showCustomCatInput, setShowCustomCatInput] = useState(false);
@@ -156,6 +158,7 @@ export function EditTransactionModal({
       setTransferToId(transaction.transfer_to_account_id ?? '');
       setCategory(transaction.category ?? '');
       setNotes(transaction.description ?? '');
+      setTxDate(formatLocalDateInput(transaction.occurred_at));
     } else {
       setShowCustomCatInput(false);
       setCustomCatName('');
@@ -164,6 +167,7 @@ export function EditTransactionModal({
       setDisplayExpr('0');
       setCategory('');
       setNotes('');
+      setTxDate('');
       setTransferToId('');
     }
   }, [visible, transaction, accounts]);
@@ -271,6 +275,11 @@ export function EditTransactionModal({
       );
       return;
     }
+    const trimmedDate = txDate.trim();
+    if (trimmedDate && !/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
+      Alert.alert('Invalid Date', 'Please enter a valid date in YYYY-MM-DD format.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -290,6 +299,9 @@ export function EditTransactionModal({
         transfer_to_account_id: txType === 'transfer' ? (transferToId || null) : null,
         category: SecurityService.sanitizeText(category, 60) || null,
         description: SecurityService.sanitizeText(notes, 200) || null,
+        occurred_at: trimmedDate
+          ? mergeDateWithOriginalTime(trimmedDate, transaction.occurred_at)
+          : transaction.occurred_at,
         sync_status: 'pending',
       };
 
@@ -601,6 +613,37 @@ export function EditTransactionModal({
           )}
 
           <View pointerEvents={selectorExpanded ? 'none' : 'auto'}>
+            <View style={styles.dateHeaderRow}>
+              <Text style={styles.inputLabel}>Date</Text>
+              <View style={styles.dateQuickRow}>
+                <TouchableOpacity
+                  style={styles.dateQuickChip}
+                  onPress={() => setTxDate(formatLocalDateInput(new Date().toISOString()))}
+                >
+                  <Text style={styles.dateQuickChipText}>Today</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dateQuickChip}
+                  onPress={() => {
+                    const y = new Date();
+                    y.setDate(y.getDate() - 1);
+                    setTxDate(formatLocalDateInput(y.toISOString()));
+                  }}
+                >
+                  <Text style={styles.dateQuickChipText}>Yesterday</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.textDim}
+              value={txDate}
+              onChangeText={setTxDate}
+              maxLength={10}
+              keyboardType="numbers-and-punctuation"
+            />
+
             <Text style={styles.inputLabel}>Notes (Optional)</Text>
           <TextInput
             style={styles.input}
@@ -1040,5 +1083,27 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
   keypadBtnTextEq: {
     color: isDark ? colors.background : '#FFFFFF',
     fontWeight: '700',
+  },
+  dateHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateQuickRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  dateQuickChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Tokens.radius.full,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dateQuickChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
   },
 });
