@@ -4,6 +4,8 @@ export type WalletAccount = {
   name: string;
   starting_value: number;
   is_active: boolean;
+  linked_org_id?: string | null;
+  linked_org_balance?: number | null;
   created_at: string;
   updated_at: string;
 };

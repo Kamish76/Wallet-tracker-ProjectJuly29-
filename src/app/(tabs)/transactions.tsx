@@ -28,6 +28,7 @@ export default function TransactionsScreen() {
 
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [accounts, setAccounts] = useState<WalletAccount[]>([]);
+  const [allAccounts, setAllAccounts] = useState<WalletAccount[]>([]);
   const [filterType, setFilterType] = useState<string>('all');
   const [modalVisible, setModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -43,7 +44,7 @@ export default function TransactionsScreen() {
   const loadLocalData = useCallback(async (organizationId: string, currentOffset = 0) => {
     try {
       const txs = await OfflineDatabase.getTransactions(organizationId, 20, currentOffset);
-      const accs = await OfflineDatabase.getAccounts(organizationId);
+      const allAccs = await OfflineDatabase.getAccounts(organizationId, true);
       
       if (currentOffset === 0) {
         setTransactions(txs);
@@ -57,7 +58,8 @@ export default function TransactionsScreen() {
       
       setOffset(currentOffset + 20);
       setHasMore(txs.length === 20);
-      setAccounts(accs);
+      setAllAccounts(allAccs);
+      setAccounts(allAccs.filter((a) => a.is_active));
     } catch (e) {
       console.log(e);
     }
@@ -217,7 +219,7 @@ export default function TransactionsScreen() {
           renderItem={({ item: tx }) => (
             <TransactionCard
               tx={tx}
-              accounts={accounts}
+              accounts={allAccounts}
               onEdit={handleEditTransaction}
               onDelete={handleDeleteConfirm}
               currency={currency}
@@ -263,7 +265,7 @@ export default function TransactionsScreen() {
         }}
         orgId={orgId}
         userId={userId}
-        accounts={accounts}
+        accounts={allAccounts}
         transaction={selectedTx}
         currency={currency}
       />

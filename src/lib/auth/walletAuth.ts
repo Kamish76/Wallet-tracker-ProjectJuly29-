@@ -213,6 +213,48 @@ export class WalletAuthService {
     return data.session;
   }
 
+  // --- Linkable Business Organizations ---
+  public static async getLinkableOrganizations(
+    userId: string,
+    walletOrgId?: string | null
+  ): Promise<{ id: string; name: string }[]> {
+    try {
+      const [{ data: ownedOrgs }, { data: memberRows }] = await Promise.all([
+        supabaseAdmin
+          .from('organizations')
+          .select('id, name, description, is_wallet')
+          .eq('owner_id', userId),
+        supabaseAdmin
+          .from('organization_members')
+          .select('organization_id')
+          .eq('user_id', userId)
+          .eq('is_active', true),
+      ]);
+
+      const memberOrgIds = (memberRows || []).map((m) => m.organization_id);
+      let memberOrgs: any[] = [];
+      if (memberOrgIds.length > 0) {
+        const { data: mOrgs } = await supabaseAdmin
+          .from('organizations')
+          .select('id, name, description, is_wallet')
+          .in('id', memberOrgIds);
+        if (mOrgs) memberOrgs = mOrgs;
+      }
+
+      const orgMap = new Map<string, { id: string; name: string }>();
+      for (const org of [...(ownedOrgs || []), ...memberOrgs]) {
+        if (org.id === walletOrgId) continue;
+        if (isWalletOrganization(org.description, (org as any).is_wallet)) continue;
+        orgMap.set(org.id, { id: org.id, name: org.name });
+      }
+
+      return Array.from(orgMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    } catch (e) {
+      console.warn('[WalletAuthService] Failed to fetch linkable organizations:', e);
+      return [];
+    }
+  }
+
   // --- Rule #1: Organization Membership Guard Verification ---
   public static async verifyWalletOrgAccess(organizationId: string, userId: string): Promise<boolean> {
     // 1. Check if user is owner of the organization using maybeSingle()

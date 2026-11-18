@@ -32,6 +32,7 @@ export default function DashboardScreen() {
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const [accounts, setAccounts] = useState<WalletAccount[]>([]);
+  const [allAccounts, setAllAccounts] = useState<WalletAccount[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [totalNetBalance, setTotalNetBalance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -97,7 +98,8 @@ export default function DashboardScreen() {
       const monthToUse = monthOverride || currentMonth;
       const { start, end } = getMonthStartEnd(monthToUse);
       
-      const localAccs = await OfflineDatabase.getAccounts(organizationId);
+      const allLocalAccs = await OfflineDatabase.getAccounts(organizationId, true);
+      const localAccs = allLocalAccs.filter((a) => a.is_active);
       const localTxs = await OfflineDatabase.getTransactions(
         organizationId,
         15,
@@ -117,6 +119,7 @@ export default function DashboardScreen() {
       const accBalances = await OfflineDatabase.getAccountsWithBalances(organizationId);
       const computedBalance = accBalances.reduce((sum, b) => sum + (b.current_balance || 0), 0);
 
+      setAllAccounts(allLocalAccs);
       setAccounts(localAccs);
       if (currentOffset === 0) {
         setTransactions(localTxs);
@@ -400,7 +403,7 @@ export default function DashboardScreen() {
         renderItem={({ item: tx }) => (
           <TransactionCard
             tx={tx}
-            accounts={accounts}
+            accounts={allAccounts}
             onEdit={handleEditTransaction}
             onDelete={handleDeleteConfirm}
             currency={currency}
@@ -449,7 +452,7 @@ export default function DashboardScreen() {
         }}
         orgId={orgId}
         userId={userId}
-        accounts={accounts}
+        accounts={allAccounts}
         transaction={selectedTx}
         currency={currency}
       />
