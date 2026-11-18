@@ -5,6 +5,7 @@ import { generateUUID, isValidUUID } from '@/lib/utils/uuid';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { Platform } from 'react-native';
 import type { SyncSettings, OfflineSyncQueueItem } from '@/types/wallet';
+import type { Database } from '@/types/supabase';
 
 const SYNC_SETTINGS_KEY = 'orgwallet_sync_settings';
 
@@ -273,8 +274,10 @@ export class SyncEngine {
             id: accId,
             organization_id: payload.organization_id,
             name: payload.name,
-            starting_value: payload.starting_value,
+            starting_value: payload.linked_org_id ? 0 : payload.starting_value,
             is_active: true,
+            linked_org_id: payload.linked_org_id ?? null,
+            linked_org_balance: payload.linked_org_balance ?? null,
           });
           if (!error) success = true;
           else throw error;
@@ -288,14 +291,28 @@ export class SyncEngine {
           if (!error) success = true;
           else throw error;
         } else if (item.action === 'UPDATE_ACCOUNT') {
+          const accountUpdate: Database['public']['Tables']['wallet_accounts']['Update'] = {
+            name: payload.name,
+            is_active: payload.is_active ?? true,
+            updated_at: payload.updated_at || new Date().toISOString(),
+          };
+          if ('linked_org_id' in payload) {
+            accountUpdate.linked_org_id = payload.linked_org_id ?? null;
+            if (payload.linked_org_id) {
+              // Preserve existing starting_value on server while linked.
+              if (payload.linked_org_balance !== undefined) {
+                accountUpdate.linked_org_balance = payload.linked_org_balance;
+              }
+            } else {
+              accountUpdate.starting_value = payload.starting_value;
+              accountUpdate.linked_org_balance = null;
+            }
+          } else {
+            accountUpdate.starting_value = payload.starting_value;
+          }
           const { error } = await supabaseAdmin
             .from('wallet_accounts')
-            .update({
-              name: payload.name,
-              starting_value: payload.starting_value,
-              is_active: payload.is_active ?? true,
-              updated_at: payload.updated_at || new Date().toISOString(),
-            })
+            .update(accountUpdate)
             .eq('id', payload.id)
             .eq('organization_id', payload.organization_id);
           if (!error) success = true;
@@ -402,20 +419,22 @@ export class SyncEngine {
       } catch {}
     }
 
-    // 0. Sync organization currency if not pending local update
-    if (!hasPendingOrgCurrencyUpdate) {
-      try {
-        const { data: orgRow, error: orgRowErr } = await supabaseAdmin
-          .from('organizations')
-          .select('currency')
-          .eq('id', organizationId)
-          .maybeSingle();
-        if (!orgRowErr && orgRow?.currency) {
+    // 0. Sync organization currency and owner_id if needed
+    let walletOwnerId: string | null = null;
+    try {
+      const { data: orgRow, error: orgRowErr } = await supabaseAdmin
+        .from('organizations')
+        .select('currency, owner_id')
+        .eq('id', organizationId)
+        .maybeSingle();
+      if (!orgRowErr && orgRow) {
+        walletOwnerId = orgRow.owner_id ?? null;
+        if (!hasPendingOrgCurrencyUpdate && orgRow.currency) {
           const { WalletAuthService } = require('@/lib/auth/walletAuth');
           await WalletAuthService.updateCachedCurrency(orgRow.currency);
         }
-      } catch {}
-    }
+      }
+    } catch {}
 
     // 1. Fetch accounts
     const { data: accounts, error: accErr } = await supabaseAdmin
@@ -431,13 +450,58 @@ export class SyncEngine {
           await OfflineDatabase.deleteAccount(localAcc.id, organizationId);
         }
       }
+
+      const linkedOrgIds = Array.from(
+        new Set(accounts.map((a) => a.linked_org_id).filter((id): id is string => Boolean(id)))
+      );
+      const computedLinkedBalances = new Map<string, number>();
+      if (linkedOrgIds.length > 0 && walletOwnerId) {
+        await Promise.all(
+          linkedOrgIds.map(async (linkedOrgId) => {
+            const { data: orgTxs, error: orgTxErr } = await supabaseAdmin
+              .from('transactions')
+              .select('type, amount, funded_by_type')
+              .eq('organization_id', linkedOrgId)
+              .eq('funded_by_user_id', walletOwnerId)
+              .limit(10000);
+            if (!orgTxErr && orgTxs) {
+              let held = 0;
+              for (const tx of orgTxs) {
+                const amt = Number(tx.amount ?? 0);
+                if (tx.type === 'held_allocate') held += amt;
+                else if (tx.type === 'held_return') held -= amt;
+                else if (tx.funded_by_type === 'business') {
+                  if (tx.type === 'income') held += amt;
+                  else if (tx.type === 'expense_business') held -= amt;
+                }
+              }
+              computedLinkedBalances.set(
+                linkedOrgId,
+                held === 0 ? 0 : Number((-held).toFixed(2))
+              );
+            }
+          })
+        );
+      }
+
       for (const acc of accounts) {
+        const linkedOrgId = acc.linked_org_id ?? null;
+        const serverLinkedBalance =
+          acc.linked_org_balance !== null && acc.linked_org_balance !== undefined
+            ? Number(acc.linked_org_balance)
+            : null;
+        const resolvedLinkedBalance = linkedOrgId
+          ? computedLinkedBalances.get(linkedOrgId) ?? serverLinkedBalance
+          : null;
+
         await OfflineDatabase.upsertAccount({
           id: acc.id,
           organization_id: acc.organization_id,
           name: acc.name,
           starting_value: Number(acc.starting_value || 0),
           is_active: Boolean(acc.is_active),
+          linked_org_id: linkedOrgId,
+          linked_org_balance: resolvedLinkedBalance,
           created_at: acc.created_at,
           updated_at: acc.updated_at,
         }, 'synced');
