@@ -419,22 +419,20 @@ export class SyncEngine {
       } catch {}
     }
 
-    // 0. Sync organization currency and owner_id if needed
-    let walletOwnerId: string | null = null;
-    try {
-      const { data: orgRow, error: orgRowErr } = await supabaseAdmin
-        .from('organizations')
-        .select('currency, owner_id')
-        .eq('id', organizationId)
-        .maybeSingle();
-      if (!orgRowErr && orgRow) {
-        walletOwnerId = orgRow.owner_id ?? null;
-        if (!hasPendingOrgCurrencyUpdate && orgRow.currency) {
+    // 0. Sync organization currency if not pending local update
+    if (!hasPendingOrgCurrencyUpdate) {
+      try {
+        const { data: orgRow, error: orgRowErr } = await supabaseAdmin
+          .from('organizations')
+          .select('currency')
+          .eq('id', organizationId)
+          .maybeSingle();
+        if (!orgRowErr && orgRow?.currency) {
           const { WalletAuthService } = require('@/lib/auth/walletAuth');
           await WalletAuthService.updateCachedCurrency(orgRow.currency);
         }
-      }
-    } catch {}
+      } catch {}
+    }
 
     // 1. Fetch accounts
     const { data: accounts, error: accErr } = await supabaseAdmin
@@ -451,48 +449,12 @@ export class SyncEngine {
         }
       }
 
-      const linkedOrgIds = Array.from(
-        new Set(accounts.map((a) => a.linked_org_id).filter((id): id is string => Boolean(id)))
-      );
-      const computedLinkedBalances = new Map<string, number>();
-      if (linkedOrgIds.length > 0 && walletOwnerId) {
-        await Promise.all(
-          linkedOrgIds.map(async (linkedOrgId) => {
-            const { data: orgTxs, error: orgTxErr } = await supabaseAdmin
-              .from('transactions')
-              .select('type, amount, funded_by_type')
-              .eq('organization_id', linkedOrgId)
-              .eq('funded_by_user_id', walletOwnerId)
-              .limit(10000);
-            if (!orgTxErr && orgTxs) {
-              let held = 0;
-              for (const tx of orgTxs) {
-                const amt = Number(tx.amount ?? 0);
-                if (tx.type === 'held_allocate') held += amt;
-                else if (tx.type === 'held_return') held -= amt;
-                else if (tx.funded_by_type === 'business') {
-                  if (tx.type === 'income') held += amt;
-                  else if (tx.type === 'expense_business') held -= amt;
-                }
-              }
-              computedLinkedBalances.set(
-                linkedOrgId,
-                held === 0 ? 0 : Number((-held).toFixed(2))
-              );
-            }
-          })
-        );
-      }
-
       for (const acc of accounts) {
         const linkedOrgId = acc.linked_org_id ?? null;
-        const serverLinkedBalance =
-          acc.linked_org_balance !== null && acc.linked_org_balance !== undefined
+        const linkedOrgBalance =
+          linkedOrgId && acc.linked_org_balance !== null && acc.linked_org_balance !== undefined
             ? Number(acc.linked_org_balance)
             : null;
-        const resolvedLinkedBalance = linkedOrgId
-          ? computedLinkedBalances.get(linkedOrgId) ?? serverLinkedBalance
-          : null;
 
         await OfflineDatabase.upsertAccount({
           id: acc.id,
@@ -501,7 +463,7 @@ export class SyncEngine {
           starting_value: Number(acc.starting_value || 0),
           is_active: Boolean(acc.is_active),
           linked_org_id: linkedOrgId,
-          linked_org_balance: resolvedLinkedBalance,
+          linked_org_balance: linkedOrgBalance,
           created_at: acc.created_at,
           updated_at: acc.updated_at,
         }, 'synced');
