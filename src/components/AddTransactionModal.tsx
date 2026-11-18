@@ -55,6 +55,7 @@ export function AddTransactionModal({
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
   const isEditMode = transaction !== undefined;
+  const isMirroredFromOrg = Boolean(transaction?.mirrored_from_tx_id);
   const effectiveVisible = isEditMode ? Boolean(visible && transaction) : visible;
 
   const [txType, setTxType] = useState<TransactionType>('expense_personal');
@@ -108,6 +109,7 @@ export function AddTransactionModal({
   };
 
   const toggleAccountDropdown = (type: 'from' | 'to' | null) => {
+    if (isMirroredFromOrg && type !== null) return;
     const nextState = showAccountDropdown === type ? null : type;
     setShowAccountDropdown(nextState);
     if (nextState) setShowCategoryDropdown(false);
@@ -124,6 +126,7 @@ export function AddTransactionModal({
   }, [displayExpr]);
 
   const handleKeypadPress = (key: string) => {
+    if (isMirroredFromOrg) return;
     if (key === '=') {
       const val = evaluateMathExpression(displayExpr);
       setDisplayExpr(String(val));
@@ -329,10 +332,12 @@ export function AddTransactionModal({
       if (transaction) {
         const updatedTx: WalletTransaction = {
           ...transaction,
-          type: txType,
-          amount: finalAmount,
-          account_id: accountId,
-          transfer_to_account_id: txType === 'transfer' ? (transferToId || null) : null,
+          type: isMirroredFromOrg ? transaction.type : txType,
+          amount: isMirroredFromOrg ? transaction.amount : finalAmount,
+          account_id: isMirroredFromOrg ? transaction.account_id : accountId,
+          transfer_to_account_id: isMirroredFromOrg
+            ? (transaction.transfer_to_account_id ?? null)
+            : (txType === 'transfer' ? (transferToId || null) : null),
           category: sanitizedCategory,
           description: sanitizedNotes,
           occurred_at: trimmedDate
@@ -445,6 +450,15 @@ export function AddTransactionModal({
           </View>
 
           <ScrollView style={[styles.formScroll, { flexShrink: 1 }]} showsVerticalScrollIndicator={true}>
+            {isMirroredFromOrg && (
+              <View style={[styles.warningRow, { marginBottom: 12, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.border }]}>
+                <AlertCircle size={15} color={colors.offline} />
+                <Text style={[styles.warningText, { flex: 1 }]}>
+                  Mirrored from Organization — amount and accounts sync automatically from the organization ledger.
+                </Text>
+              </View>
+            )}
+
             {/* Type Selector */}
             <View style={styles.typeSelectorRow}>
               {(
@@ -456,9 +470,11 @@ export function AddTransactionModal({
               ).map((item) => (
                 <TouchableOpacity
                   key={item.key}
+                  disabled={isMirroredFromOrg}
                   style={[
                     styles.typeBtn,
                     txType === item.key && styles.typeBtnActive,
+                    isMirroredFromOrg && txType !== item.key && { opacity: 0.4 },
                   ]}
                   onPress={() => setTxType(item.key)}
                 >
@@ -475,14 +491,22 @@ export function AddTransactionModal({
             </View>
 
             {/* Display Area */}
-            <TouchableOpacity activeOpacity={1} onPress={() => inputRef.current?.focus()} style={styles.displayArea}>
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => {
+                if (!isMirroredFromOrg) inputRef.current?.focus();
+              }}
+              style={[styles.displayArea, isMirroredFromOrg && { opacity: 0.7 }]}
+            >
               <TextInput
                 ref={inputRef}
-                autoFocus
+                autoFocus={!isMirroredFromOrg}
+                editable={!isMirroredFromOrg}
                 showSoftInputOnFocus={false}
                 caretHidden
                 style={{ position: 'absolute', width: 0, height: 0, opacity: 0 }}
                 onKeyPress={(e) => {
+                  if (isMirroredFromOrg) return;
                   const key = e.nativeEvent.key;
                   if (key >= '0' && key <= '9') {
                     handleKeypadPress(key);
@@ -513,7 +537,14 @@ export function AddTransactionModal({
                     <Text style={styles.evalText}>= {formatCurrency(evaluatedAmount, currency)}</Text>
                   )}
                 </View>
-                <TouchableOpacity onPress={() => handleKeypadPress('BACKSPACE')} onLongPress={() => setDisplayExpr('0')} style={styles.backspaceBtn}>
+                <TouchableOpacity
+                  disabled={isMirroredFromOrg}
+                  onPress={() => handleKeypadPress('BACKSPACE')}
+                  onLongPress={() => {
+                    if (!isMirroredFromOrg) setDisplayExpr('0');
+                  }}
+                  style={[styles.backspaceBtn, isMirroredFromOrg && { opacity: 0.4 }]}
+                >
                   <Delete size={24} color={colors.textLight} />
                 </TouchableOpacity>
               </View>
@@ -533,7 +564,8 @@ export function AddTransactionModal({
                 {txType === 'transfer' ? 'From' : 'Account'}
               </Text>
               <TouchableOpacity
-                style={[styles.selectorButton, showAccountDropdown === 'from' && styles.selectorButtonActive]}
+                disabled={isMirroredFromOrg}
+                style={[styles.selectorButton, showAccountDropdown === 'from' && styles.selectorButtonActive, isMirroredFromOrg && { opacity: 0.6 }]}
                 onPress={() => toggleAccountDropdown('from')}
               >
                 <Text style={styles.selectorButtonText} numberOfLines={1}>
@@ -551,7 +583,8 @@ export function AddTransactionModal({
 
               {txType === 'transfer' ? (
                 <TouchableOpacity
-                  style={[styles.selectorButton, showAccountDropdown === 'to' && styles.selectorButtonActive]}
+                  disabled={isMirroredFromOrg}
+                  style={[styles.selectorButton, showAccountDropdown === 'to' && styles.selectorButtonActive, isMirroredFromOrg && { opacity: 0.6 }]}
                   onPress={() => toggleAccountDropdown('to')}
                 >
                   <Text style={styles.selectorButtonText} numberOfLines={1}>
@@ -734,7 +767,7 @@ export function AddTransactionModal({
           )}
 
           {/* Keypad */}
-          <View style={[styles.keypad, { marginTop: 24, minHeight: 260 }]}>
+          <View style={[styles.keypad, { marginTop: 24, minHeight: 260 }, isMirroredFromOrg && { opacity: 0.45 }]}>
             {[
               ['+', '7', '8', '9'],
               ['-', '4', '5', '6'],
@@ -745,6 +778,7 @@ export function AddTransactionModal({
                 {row.map((btn) => (
                   <TouchableOpacity
                     key={btn}
+                    disabled={isMirroredFromOrg}
                     style={[
                       styles.keypadBtn,
                       ['+', '-', '×', '÷'].includes(btn) && styles.keypadBtnOp,
