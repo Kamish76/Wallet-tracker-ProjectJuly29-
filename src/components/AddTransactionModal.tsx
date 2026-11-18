@@ -69,6 +69,11 @@ export function AddTransactionModal({
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [prevInitialType, setPrevInitialType] = useState(initialType);
 
+  const selectableAccounts = useMemo(
+    () => (txType === 'transfer' ? accounts : accounts.filter((a) => !a.linked_org_id)),
+    [accounts, txType]
+  );
+
   // Sync initialType without triggering a second render pass during animation
   if (initialType !== prevInitialType) {
     setPrevInitialType(initialType);
@@ -172,10 +177,14 @@ export function AddTransactionModal({
   }, [visible]);
 
   useEffect(() => {
-    if (visible && accounts.length > 0 && !accountId) {
-      setAccountId(accounts[0].id);
+    if (visible) {
+      if (selectableAccounts.length > 0 && !selectableAccounts.some((a) => a.id === accountId)) {
+        setAccountId(selectableAccounts[0].id);
+      } else if (selectableAccounts.length === 0 && accountId !== '') {
+        setAccountId('');
+      }
     }
-  }, [visible, accounts, accountId]);
+  }, [visible, selectableAccounts, accountId]);
 
   useEffect(() => {
     if (visible && orgId) {
@@ -264,6 +273,14 @@ export function AddTransactionModal({
     const finalAmount = valValidation.value;
     if (!accountId) {
       Alert.alert('No Account', 'Please select a wallet sub-account.');
+      return;
+    }
+    const chosenSource = accounts.find((a) => a.id === accountId);
+    if (txType !== 'transfer' && chosenSource?.linked_org_id) {
+      Alert.alert(
+        'Linked Account Read-Only',
+        'Direct income and expenses are disabled on linked organization accounts. Use Transfer or record entries in the linked organization.'
+      );
       return;
     }
     if (txType === 'transfer' && (!transferToId || transferToId === accountId)) {
@@ -480,7 +497,7 @@ export function AddTransactionModal({
           {/* Floating Dropdown Lists */}
           {showAccountDropdown === 'from' && (
               <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
-                {accounts.map((a) => (
+                {selectableAccounts.map((a) => (
                   <TouchableOpacity
                     key={a.id}
                     style={[styles.dropdownItem, accountId === a.id && styles.dropdownItemActive]}
@@ -490,7 +507,7 @@ export function AddTransactionModal({
                     }}
                   >
                     <Text style={[styles.dropdownItemText, accountId === a.id && styles.dropdownItemTextActive]}>
-                      {a.name}
+                      {a.name}{a.linked_org_id ? ' (Linked)' : ''}
                     </Text>
                     <Text style={styles.dropdownItemSubText}>
                       {formatCurrency(accountBalances[a.id] || 0, currency)}

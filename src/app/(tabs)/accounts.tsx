@@ -10,7 +10,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
-import { Plus, Archive, X, Wallet as WalletIcon, Edit2, Trash2 } from 'lucide-react-native';
+import { Plus, Archive, X, Wallet as WalletIcon, Edit2, Trash2, Link2 } from 'lucide-react-native';
 import { useFocusEffect } from 'expo-router';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
@@ -36,6 +36,8 @@ export default function AccountsScreen() {
   const [editingAccount, setEditingAccount] = useState<AccountWithBalance | null>(null);
   const [accName, setAccName] = useState('');
   const [startingVal, setStartingVal] = useState('0');
+  const [selectedLinkedOrgId, setSelectedLinkedOrgId] = useState<string | null>(null);
+  const [linkableOrgs, setLinkableOrgs] = useState<{ id: string; name: string }[]>([]);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [currency, setCurrency] = useState('USD');
   const [saving, setSaving] = useState(false);
@@ -45,6 +47,7 @@ export default function AccountsScreen() {
     setEditingAccount(null);
     setAccName('');
     setStartingVal('0');
+    setSelectedLinkedOrgId(null);
     setModalVisible(true);
   };
 
@@ -52,6 +55,7 @@ export default function AccountsScreen() {
     setEditingAccount(acc);
     setAccName(acc.name);
     setStartingVal(String(acc.starting_value));
+    setSelectedLinkedOrgId(acc.linked_org_id ?? null);
     setModalVisible(true);
   };
 
@@ -69,6 +73,9 @@ export default function AccountsScreen() {
       const { organizationId, currency: fetchedCurrency } = await WalletAuthService.resolveUserWallet(session.user.id);
       setOrgId(organizationId);
       setCurrency(fetchedCurrency);
+      WalletAuthService.getLinkableOrganizations(session.user.id, organizationId)
+        .then(setLinkableOrgs)
+        .catch(() => {});
       await loadLocalAccounts(organizationId, showArchived);
     }
     init();
@@ -98,12 +105,16 @@ export default function AccountsScreen() {
       Alert.alert('Error', 'Please enter a valid account name.');
       return;
     }
-    const valValidation = SecurityService.validateAmount(startingVal, { min: -100_000_000, max: 1_000_000_000 });
-    if (!valValidation.isValid) {
-      Alert.alert('Error', valValidation.error || 'Please enter a valid numeric starting value.');
-      return;
+
+    let parsedVal = editingAccount ? editingAccount.starting_value : 0;
+    if (!selectedLinkedOrgId) {
+      const valValidation = SecurityService.validateAmount(startingVal, { min: -100_000_000, max: 1_000_000_000 });
+      if (!valValidation.isValid) {
+        Alert.alert('Error', valValidation.error || 'Please enter a valid numeric starting value.');
+        return;
+      }
+      parsedVal = valValidation.value;
     }
-    const parsedVal = valValidation.value;
 
     setSaving(true);
     try {
@@ -120,6 +131,9 @@ export default function AccountsScreen() {
           ...editingAccount,
           name: sanitizedName,
           starting_value: parsedVal,
+          linked_org_id: selectedLinkedOrgId,
+          linked_org_balance: selectedLinkedOrgId ? editingAccount.linked_org_balance ?? null : null,
+          updated_at: new Date().toISOString(),
         };
         await OfflineDatabase.upsertAccount(updated, 'pending');
         await OfflineDatabase.enqueueMutation('UPDATE_ACCOUNT', updated);
@@ -130,6 +144,8 @@ export default function AccountsScreen() {
           name: sanitizedName,
           starting_value: parsedVal,
           is_active: true,
+          linked_org_id: selectedLinkedOrgId,
+          linked_org_balance: null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
@@ -138,12 +154,12 @@ export default function AccountsScreen() {
       }
 
       setModalVisible(false);
-      await loadLocalAccounts(orgId, showArchived);
-      WidgetService.refreshWidgetData(orgId).catch(() => {});
 
       if (SyncEngine.getOnlineStatus()) {
-        SyncEngine.syncNow(orgId);
+        await SyncEngine.syncNow(orgId);
       }
+      await loadLocalAccounts(orgId, showArchived);
+      WidgetService.refreshWidgetData(orgId).catch(() => {});
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to save account.');
     } finally {
@@ -307,10 +323,18 @@ export default function AccountsScreen() {
                 <View style={styles.iconBox}>
                   <WalletIcon size={20} color={acc.is_active ? colors.primary : colors.textDim} />
                 </View>
-                <View>
+                <View style={{ flex: 1 }}>
                   <Text style={styles.accName}>
                     {acc.name} {!acc.is_active && '(Archived)'}
                   </Text>
+                  {acc.linked_org_id && (
+                    <View style={styles.linkedBadge}>
+                      <Link2 size={11} color={colors.primary} />
+                      <Text style={styles.linkedBadgeText}>
+                        {linkableOrgs.find((o) => o.id === acc.linked_org_id)?.name || 'Linked Org'} • Read-Only
+                      </Text>
+                    </View>
+                  )}
                   <Text style={styles.accBalanceLarge}>
                     {formatCurrency(Number(acc.current_balance || 0), currency)}
                   </Text>
@@ -365,15 +389,71 @@ export default function AccountsScreen() {
               onChangeText={setAccName}
             />
 
+            {(linkableOrgs.length > 0 || selectedLinkedOrgId) && (
+              <>
+                <Text style={styles.inputLabel}>Link Organization Balance (Optional)</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.orgChipRow}
+                >
+                  <TouchableOpacity
+                    style={[
+                      styles.orgChip,
+                      selectedLinkedOrgId === null && styles.orgChipActive,
+                    ]}
+                    onPress={() => setSelectedLinkedOrgId(null)}
+                  >
+                    <Text
+                      style={[
+                        styles.orgChipText,
+                        selectedLinkedOrgId === null && styles.orgChipTextActive,
+                      ]}
+                    >
+                      None (Manual)
+                    </Text>
+                  </TouchableOpacity>
+                  {linkableOrgs.map((org) => (
+                    <TouchableOpacity
+                      key={org.id}
+                      style={[
+                        styles.orgChip,
+                        selectedLinkedOrgId === org.id && styles.orgChipActive,
+                      ]}
+                      onPress={() => setSelectedLinkedOrgId(org.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.orgChipText,
+                          selectedLinkedOrgId === org.id && styles.orgChipTextActive,
+                        ]}
+                      >
+                        {org.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            )}
+
             <Text style={styles.inputLabel}>Starting Value</Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                selectedLinkedOrgId ? styles.inputDisabled : null,
+              ]}
               placeholder="0.00"
               placeholderTextColor={colors.textDim}
               keyboardType="decimal-pad"
               value={startingVal}
               onChangeText={setStartingVal}
+              editable={!selectedLinkedOrgId}
             />
+            {selectedLinkedOrgId && (
+              <Text style={styles.linkedHintText}>
+                Locked while linked — mirrors negated Business Held from the organization. Unlink anytime to restore manual tracking.
+              </Text>
+            )}
 
             <TouchableOpacity
               style={styles.saveButton}
@@ -514,6 +594,58 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
     cardLeft: {
       flexDirection: 'row',
       alignItems: 'center',
+      flex: 1,
+    },
+    linkedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: 4,
+      marginTop: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: Tokens.radius.full,
+      backgroundColor: colors.surfaceElevated,
+      borderWidth: 1,
+      borderColor: colors.primary,
+    },
+    linkedBadgeText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.primary,
+    },
+    orgChipRow: {
+      flexGrow: 0,
+      marginBottom: 4,
+    },
+    orgChip: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: Tokens.radius.full,
+      backgroundColor: colors.surfaceElevated,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginRight: 8,
+    },
+    orgChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    orgChipText: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: colors.textMuted,
+    },
+    orgChipTextActive: {
+      color: isDark ? colors.background : '#FFFFFF',
+    },
+    inputDisabled: {
+      opacity: 0.55,
+    },
+    linkedHintText: {
+      ...Tokens.typography.caption,
+      color: colors.textMuted,
+      marginTop: 6,
     },
     iconBox: {
       width: 40,
