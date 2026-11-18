@@ -71,8 +71,11 @@ export function EditTransactionModal({
   
 
   const selectableAccounts = useMemo(
-    () => (txType === 'transfer' ? accounts : accounts.filter((a) => !a.linked_org_id)),
-    [accounts, txType]
+    () =>
+      txType === 'transfer'
+        ? accounts
+        : accounts.filter((a) => !a.linked_org_id || a.id === transaction?.account_id),
+    [accounts, txType, transaction?.account_id]
   );
 
   // DEBUG LOGGING
@@ -274,7 +277,11 @@ export function EditTransactionModal({
       return;
     }
     const chosenSource = accounts.find((a) => a.id === accountId);
-    if (txType !== 'transfer' && chosenSource?.linked_org_id) {
+    if (
+      txType !== 'transfer' &&
+      chosenSource?.linked_org_id &&
+      accountId !== transaction.account_id
+    ) {
       Alert.alert(
         'Linked Account Read-Only',
         'Direct income and expenses are disabled on linked organization accounts. Use Transfer or record entries in the linked organization.'
