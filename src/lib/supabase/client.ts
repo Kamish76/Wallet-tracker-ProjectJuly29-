@@ -14,10 +14,6 @@ const supabaseAnonKey =
   process.env.SUPABASE_ANON_KEY ||
   'public-anon-key';
 
-const supabaseServiceRoleKey =
-  process.env.EXPO_PUBLIC_SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY;
-
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: AsyncStorage,
@@ -27,13 +23,5 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-// Admin/Data client bypasses recursive RLS policies on organization_members (matching Financial-tracker web app behavior)
-export const supabaseAdmin = supabaseServiceRoleKey
-  ? createClient<Database>(supabaseUrl, supabaseServiceRoleKey, {
-      auth: {
-        storage: AsyncStorage,
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    })
-  : supabase;
+// Alias to the authenticated session client so service-role credentials are never bundled in the mobile client.
+export const supabaseAdmin = supabase;
