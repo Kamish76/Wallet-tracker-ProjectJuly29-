@@ -169,12 +169,12 @@ export default function AccountsScreen() {
 
   const handleArchiveAccount = (account: WalletAccount) => {
     Alert.alert(
-      'Archive Sub-Account',
-      `Are you sure you want to archive "${account.name}"? It will be hidden from default views.`,
+      'Hide Sub-Account Balance',
+      `Archive "${account.name}"? Its current balance will be hidden from your total net balance while all past transactions remain preserved.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Archive',
+          text: 'Hide Balance',
           style: 'destructive',
           onPress: async () => {
             if (!orgId) return;
@@ -250,12 +250,12 @@ export default function AccountsScreen() {
 
   const handleUnarchiveAccount = (account: WalletAccount) => {
     Alert.alert(
-      'Unarchive Sub-Account',
-      `Are you sure you want to reactivate "${account.name}"?`,
+      'Restore Sub-Account Balance',
+      `Restore "${account.name}"? Its current balance will be included in your total net balance again.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Unarchive',
+          text: 'Restore',
           style: 'default',
           onPress: async () => {
             if (!orgId) return;
@@ -325,7 +325,7 @@ export default function AccountsScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.accName}>
-                    {acc.name} {!acc.is_active && '(Archived)'}
+                    {acc.name} {!acc.is_active && '(Archived • Balance Hidden)'}
                   </Text>
                   {acc.linked_org_id && (
                     <View style={styles.linkedBadge}>
@@ -483,7 +483,7 @@ export default function AccountsScreen() {
                 >
                   <Archive size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
                   <Text style={styles.archiveModalButtonText}>
-                    {editingAccount.is_active ? 'Archive Sub-Account' : 'Unarchive Sub-Account'}
+                    {editingAccount.is_active ? 'Hide Balance (Archive)' : 'Restore Balance (Unarchive)'}
                   </Text>
                 </TouchableOpacity>
 
