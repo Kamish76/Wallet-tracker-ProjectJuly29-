@@ -51,6 +51,7 @@ export const TransactionCard = memo(
               </Text>
               {' • '}
               {new Date(tx.occurred_at).toLocaleDateString()}
+              {tx.mirrored_from_tx_id ? ' • Mirrored from Org' : ''}
               {tx.sync_status === 'pending' ? ' • (Offline Pending)' : ''}
             </Text>
           </View>
@@ -103,6 +104,8 @@ export const TransactionCard = memo(
       prevProps.tx.occurred_at === nextProps.tx.occurred_at &&
       prevProps.tx.sync_status === nextProps.tx.sync_status &&
       prevProps.tx.type === nextProps.tx.type &&
+      prevProps.tx.description === nextProps.tx.description &&
+      prevProps.tx.mirrored_from_tx_id === nextProps.tx.mirrored_from_tx_id &&
       prevProps.accounts === nextProps.accounts &&
       prevProps.currency === nextProps.currency
     );

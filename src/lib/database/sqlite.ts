@@ -70,7 +70,8 @@ export class OfflineDatabase {
         created_at TEXT,
         occurred_at TEXT,
         sync_status TEXT DEFAULT 'synced',
-        is_initial INTEGER DEFAULT 0
+        is_initial INTEGER DEFAULT 0,
+        mirrored_from_tx_id TEXT
       );
 
       CREATE TABLE IF NOT EXISTS offline_sync_queue (
@@ -111,6 +112,10 @@ export class OfflineDatabase {
     } catch {}
     try {
       await db.execAsync('ALTER TABLE local_accounts ADD COLUMN linked_org_balance REAL;');
+    } catch {}
+    // Safe migration: add mirrored_from_tx_id column to local_transactions
+    try {
+      await db.execAsync('ALTER TABLE local_transactions ADD COLUMN mirrored_from_tx_id TEXT;');
     } catch {}
   }
 
@@ -280,9 +285,10 @@ export class OfflineDatabase {
       await db.runAsync(
         `INSERT INTO local_transactions (
            id, organization_id, user_id, type, amount, account_id, transfer_to_account_id,
-           category, category_id, description, created_at, occurred_at, sync_status, is_initial
+           category, category_id, description, created_at, occurred_at, sync_status, is_initial,
+           mirrored_from_tx_id
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            amount = excluded.amount,
            type = excluded.type,
@@ -293,7 +299,8 @@ export class OfflineDatabase {
            description = excluded.description,
            occurred_at = excluded.occurred_at,
            sync_status = excluded.sync_status,
-           is_initial = excluded.is_initial;`,
+           is_initial = excluded.is_initial,
+           mirrored_from_tx_id = excluded.mirrored_from_tx_id;`,
         [
           tx.id ?? null,
           tx.organization_id ?? null,
@@ -309,6 +316,7 @@ export class OfflineDatabase {
           tx.occurred_at ?? null,
           syncStatus ?? 'synced',
           tx.is_initial ? 1 : 0,
+          tx.mirrored_from_tx_id ?? null,
         ]
       );
     });
@@ -355,6 +363,7 @@ export class OfflineDatabase {
         occurred_at: r.occurred_at,
         sync_status: r.sync_status,
         is_initial: Boolean(r.is_initial),
+        mirrored_from_tx_id: r.mirrored_from_tx_id ?? null,
       }));
     });
   }

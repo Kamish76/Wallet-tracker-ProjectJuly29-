@@ -31,6 +31,7 @@ export type WalletTransaction = {
   created_at: string;
   occurred_at: string;
   is_initial?: boolean;
+  mirrored_from_tx_id?: string | null;
   // Local offline status flags
   sync_status?: 'synced' | 'pending' | 'syncing' | 'failed';
   local_id?: string;

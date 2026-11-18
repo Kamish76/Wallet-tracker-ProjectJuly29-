@@ -212,6 +212,7 @@ export class SyncEngine {
             created_at: payload.created_at || new Date().toISOString(),
             occurred_at: payload.occurred_at || new Date().toISOString(),
             is_initial: false,
+            mirrored_from_tx_id: payload.mirrored_from_tx_id ?? null,
           });
 
           if (!error) success = true;
@@ -232,17 +233,25 @@ export class SyncEngine {
               ? payload.transfer_to_account_id
               : null;
 
+          const updateFields: Database['public']['Tables']['transactions']['Update'] = payload.mirrored_from_tx_id
+            ? {
+                category: payload.category || null,
+                description: payload.description || '',
+                occurred_at: payload.occurred_at || new Date().toISOString(),
+              }
+            : {
+                type: payload.type,
+                amount: payload.amount,
+                account_id: validAccountId,
+                transfer_to_account_id: validTransferToId,
+                category: payload.category || null,
+                description: payload.description || '',
+                occurred_at: payload.occurred_at || new Date().toISOString(),
+              };
+
           const { error } = await supabaseAdmin
             .from('transactions')
-            .update({
-              type: payload.type,
-              amount: payload.amount,
-              account_id: validAccountId,
-              transfer_to_account_id: validTransferToId,
-              category: payload.category || null,
-              description: payload.description || '',
-              occurred_at: payload.occurred_at || new Date().toISOString(),
-            })
+            .update(updateFields)
             .eq('id', payload.id)
             .eq('organization_id', payload.organization_id);
 
@@ -516,6 +525,7 @@ export class SyncEngine {
           created_at: tx.created_at,
           occurred_at: tx.occurred_at,
           is_initial: Boolean(tx.is_initial),
+          mirrored_from_tx_id: (tx as { mirrored_from_tx_id?: string | null }).mirrored_from_tx_id ?? null,
         }, 'synced');
       }
     }

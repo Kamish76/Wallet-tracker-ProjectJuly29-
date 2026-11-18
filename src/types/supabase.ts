@@ -153,6 +153,7 @@ export interface Database {
           funded_by_type: string | null;
           funded_by_user_id: string | null;
           updated_by_user_id: string | null;
+          mirrored_from_tx_id?: string | null;
         };
         Insert: {
           id?: string;
@@ -171,6 +172,7 @@ export interface Database {
           funded_by_type?: string | null;
           funded_by_user_id?: string | null;
           updated_by_user_id?: string | null;
+          mirrored_from_tx_id?: string | null;
         };
         Update: {
           id?: string;
@@ -189,6 +191,7 @@ export interface Database {
           funded_by_type?: string | null;
           funded_by_user_id?: string | null;
           updated_by_user_id?: string | null;
+          mirrored_from_tx_id?: string | null;
         };
         Relationships: [];
       };
