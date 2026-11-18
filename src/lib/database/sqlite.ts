@@ -105,6 +105,13 @@ export class OfflineDatabase {
     try {
       await db.execAsync('ALTER TABLE local_transactions ADD COLUMN is_initial INTEGER DEFAULT 0;');
     } catch {}
+    // Safe migration: add linked organization columns to local_accounts
+    try {
+      await db.execAsync('ALTER TABLE local_accounts ADD COLUMN linked_org_id TEXT;');
+    } catch {}
+    try {
+      await db.execAsync('ALTER TABLE local_accounts ADD COLUMN linked_org_balance REAL;');
+    } catch {}
   }
 
   // --- Clear All Local Database Data (for Login/Logout hygiene) ---
@@ -127,12 +134,14 @@ export class OfflineDatabase {
     return this.withLock(async () => {
       const db = await this.getDb();
       await db.runAsync(
-        `INSERT INTO local_accounts (id, organization_id, name, starting_value, is_active, created_at, updated_at, sync_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO local_accounts (id, organization_id, name, starting_value, is_active, linked_org_id, linked_org_balance, created_at, updated_at, sync_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name,
            starting_value = excluded.starting_value,
            is_active = excluded.is_active,
+           linked_org_id = excluded.linked_org_id,
+           linked_org_balance = excluded.linked_org_balance,
            updated_at = excluded.updated_at,
            sync_status = excluded.sync_status;`,
         [
@@ -141,6 +150,10 @@ export class OfflineDatabase {
           account.name ?? null,
           account.starting_value ?? 0,
           account.is_active ? 1 : 0,
+          account.linked_org_id ?? null,
+          account.linked_org_balance !== null && account.linked_org_balance !== undefined
+            ? Number(account.linked_org_balance)
+            : null,
           account.created_at ?? null,
           account.updated_at ?? null,
           syncStatus ?? 'synced',
@@ -162,6 +175,11 @@ export class OfflineDatabase {
         name: r.name,
         starting_value: r.starting_value,
         is_active: Boolean(r.is_active),
+        linked_org_id: r.linked_org_id ?? null,
+        linked_org_balance:
+          r.linked_org_balance !== null && r.linked_org_balance !== undefined
+            ? Number(r.linked_org_balance)
+            : null,
         created_at: r.created_at,
         updated_at: r.updated_at,
       }));
@@ -174,7 +192,7 @@ export class OfflineDatabase {
       const condition = includeArchived ? '' : ' AND a.is_active = 1';
       const sql = `
         SELECT 
-          a.id, a.organization_id, a.name, a.starting_value, a.is_active, a.created_at, a.updated_at,
+          a.id, a.organization_id, a.name, a.starting_value, a.is_active, a.linked_org_id, a.linked_org_balance, a.created_at, a.updated_at,
           COALESCE(SUM(
             CASE 
               WHEN t.type = 'income' THEN ABS(t.amount)
@@ -194,17 +212,30 @@ export class OfflineDatabase {
         ORDER BY a.is_active DESC, a.name ASC;
       `;
       const rows = await db.getAllAsync<any>(sql, [organizationId ?? null]);
-      return rows.map((r) => ({
-        id: r.id,
-        organization_id: r.organization_id,
-        name: r.name,
-        starting_value: r.starting_value,
-        is_active: Boolean(r.is_active),
-        created_at: r.created_at,
-        updated_at: r.updated_at,
-        current_balance: Number(r.starting_value || 0) + Number(r.balance_delta || 0),
-        transaction_count: r.transaction_count,
-      }));
+      return rows.map((r) => {
+        const linkedOrgId = r.linked_org_id ?? null;
+        const linkedOrgBalance =
+          r.linked_org_balance !== null && r.linked_org_balance !== undefined
+            ? Number(r.linked_org_balance)
+            : null;
+        const currentBalance = linkedOrgId
+          ? Number(linkedOrgBalance ?? 0)
+          : Number(r.starting_value || 0) + Number(r.balance_delta || 0);
+
+        return {
+          id: r.id,
+          organization_id: r.organization_id,
+          name: r.name,
+          starting_value: r.starting_value,
+          is_active: Boolean(r.is_active),
+          linked_org_id: linkedOrgId,
+          linked_org_balance: linkedOrgBalance,
+          created_at: r.created_at,
+          updated_at: r.updated_at,
+          current_balance: currentBalance,
+          transaction_count: r.transaction_count,
+        };
+      });
     });
   }
   public static async deleteAccount(id: string, organizationId: string): Promise<void> {
