@@ -5,6 +5,7 @@ import { generateUUID, isValidUUID } from '@/lib/utils/uuid';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { Platform } from 'react-native';
 import type { SyncSettings, OfflineSyncQueueItem } from '@/types/wallet';
+import type { Database } from '@/types/supabase';
 
 const SYNC_SETTINGS_KEY = 'orgwallet_sync_settings';
 
@@ -108,16 +109,25 @@ export class SyncEngine {
       // Step 1: Push pending mutations to Supabase
       await this.pushPendingQueue(settings.conflictResolution);
 
-      // Step 2: Pull latest state from Supabase if org ID provided
-      if (organizationId) {
-        await this.pullLatestData(organizationId);
+      // Step 2: Pull latest state from Supabase if org ID provided (or cached org fallback)
+      let targetOrgId = organizationId;
+      if (!targetOrgId) {
+        try {
+          const { WalletAuthService } = require('@/lib/auth/walletAuth');
+          const cached = await WalletAuthService.getCachedOrgIdAsync();
+          if (cached) targetOrgId = cached;
+        } catch {}
+      }
+
+      if (targetOrgId) {
+        await this.pullLatestData(targetOrgId);
       }
 
       this.isSyncing = false;
       await this.notifyListeners();
-      if (Platform.OS === 'android') {
+      if (Platform.OS === 'android' || Platform.OS === 'ios') {
         const { WidgetService } = require('@/lib/widget/widgetService');
-        WidgetService.refreshWidgetData(organizationId).catch(() => {});
+        WidgetService.refreshWidgetData(targetOrgId).catch(() => {});
       }
       return { success: true };
     } catch (error: any) {
@@ -154,7 +164,7 @@ export class SyncEngine {
       this.isSyncing = false;
       await this.notifyListeners();
       console.log('[SyncEngine] First-time auto sync completed successfully.');
-      if (Platform.OS === 'android') {
+      if (Platform.OS === 'android' || Platform.OS === 'ios') {
         const { WidgetService } = require('@/lib/widget/widgetService');
         WidgetService.refreshWidgetData(organizationId).catch(() => {});
       }
@@ -202,6 +212,7 @@ export class SyncEngine {
             created_at: payload.created_at || new Date().toISOString(),
             occurred_at: payload.occurred_at || new Date().toISOString(),
             is_initial: false,
+            mirrored_from_tx_id: payload.mirrored_from_tx_id ?? null,
           });
 
           if (!error) success = true;
@@ -222,17 +233,25 @@ export class SyncEngine {
               ? payload.transfer_to_account_id
               : null;
 
+          const updateFields: Database['public']['Tables']['transactions']['Update'] = payload.mirrored_from_tx_id
+            ? {
+                category: payload.category || null,
+                description: payload.description || '',
+                occurred_at: payload.occurred_at || new Date().toISOString(),
+              }
+            : {
+                type: payload.type,
+                amount: payload.amount,
+                account_id: validAccountId,
+                transfer_to_account_id: validTransferToId,
+                category: payload.category || null,
+                description: payload.description || '',
+                occurred_at: payload.occurred_at || new Date().toISOString(),
+              };
+
           const { error } = await supabaseAdmin
             .from('transactions')
-            .update({
-              type: payload.type,
-              amount: payload.amount,
-              account_id: validAccountId,
-              transfer_to_account_id: validTransferToId,
-              category: payload.category || null,
-              description: payload.description || '',
-              occurred_at: payload.occurred_at || new Date().toISOString(),
-            })
+            .update(updateFields)
             .eq('id', payload.id)
             .eq('organization_id', payload.organization_id);
 
@@ -243,11 +262,14 @@ export class SyncEngine {
             throw error;
           }
         } else if (item.action === 'DELETE_TRANSACTION') {
-          const { error } = await supabaseAdmin
+          let query = supabaseAdmin
             .from('transactions')
             .delete()
-            .eq('id', payload.id)
-            .eq('organization_id', payload.organization_id);
+            .eq('id', payload.id);
+          if (payload.organization_id) {
+            query = query.eq('organization_id', payload.organization_id);
+          }
+          const { error } = await query;
 
           if (!error) success = true;
           else if (conflictRule === 'server_wins') {
@@ -261,8 +283,10 @@ export class SyncEngine {
             id: accId,
             organization_id: payload.organization_id,
             name: payload.name,
-            starting_value: payload.starting_value,
+            starting_value: payload.linked_org_id ? 0 : payload.starting_value,
             is_active: true,
+            linked_org_id: payload.linked_org_id ?? null,
+            linked_org_balance: payload.linked_org_balance ?? null,
           });
           if (!error) success = true;
           else throw error;
@@ -276,24 +300,41 @@ export class SyncEngine {
           if (!error) success = true;
           else throw error;
         } else if (item.action === 'UPDATE_ACCOUNT') {
+          const accountUpdate: Database['public']['Tables']['wallet_accounts']['Update'] = {
+            name: payload.name,
+            is_active: payload.is_active ?? true,
+            updated_at: payload.updated_at || new Date().toISOString(),
+          };
+          if ('linked_org_id' in payload) {
+            accountUpdate.linked_org_id = payload.linked_org_id ?? null;
+            if (payload.linked_org_id) {
+              // Preserve existing starting_value on server while linked.
+              if (payload.linked_org_balance !== undefined) {
+                accountUpdate.linked_org_balance = payload.linked_org_balance;
+              }
+            } else {
+              accountUpdate.starting_value = payload.starting_value;
+              accountUpdate.linked_org_balance = null;
+            }
+          } else {
+            accountUpdate.starting_value = payload.starting_value;
+          }
           const { error } = await supabaseAdmin
             .from('wallet_accounts')
-            .update({
-              name: payload.name,
-              starting_value: payload.starting_value,
-              is_active: payload.is_active ?? true,
-              updated_at: payload.updated_at || new Date().toISOString(),
-            })
+            .update(accountUpdate)
             .eq('id', payload.id)
             .eq('organization_id', payload.organization_id);
           if (!error) success = true;
           else throw error;
         } else if (item.action === 'DELETE_ACCOUNT') {
-          const { error } = await supabaseAdmin
+          let query = supabaseAdmin
             .from('wallet_accounts')
             .delete()
-            .eq('id', payload.id)
-            .eq('organization_id', payload.organization_id);
+            .eq('id', payload.id);
+          if (payload.organization_id) {
+            query = query.eq('organization_id', payload.organization_id);
+          }
+          const { error } = await query;
 
           if (!error) success = true;
           else if (conflictRule === 'server_wins') {
@@ -370,6 +411,7 @@ export class SyncEngine {
     const pendingCreateAccIds = new Set<string>();
     const pendingCreateTxIds = new Set<string>();
     const pendingCreateCatIds = new Set<string>();
+    let hasPendingOrgCurrencyUpdate = false;
 
     for (const item of pendingItems) {
       try {
@@ -380,6 +422,23 @@ export class SyncEngine {
           pendingCreateTxIds.add(payload.id);
         } else if (item.action === 'CREATE_CATEGORY' && payload.id) {
           pendingCreateCatIds.add(payload.id);
+        } else if (item.action === 'UPDATE_ORGANIZATION' && payload.id === organizationId) {
+          hasPendingOrgCurrencyUpdate = true;
+        }
+      } catch {}
+    }
+
+    // 0. Sync organization currency if not pending local update
+    if (!hasPendingOrgCurrencyUpdate) {
+      try {
+        const { data: orgRow, error: orgRowErr } = await supabaseAdmin
+          .from('organizations')
+          .select('currency')
+          .eq('id', organizationId)
+          .maybeSingle();
+        if (!orgRowErr && orgRow?.currency) {
+          const { WalletAuthService } = require('@/lib/auth/walletAuth');
+          await WalletAuthService.updateCachedCurrency(orgRow.currency);
         }
       } catch {}
     }
@@ -398,31 +457,54 @@ export class SyncEngine {
           await OfflineDatabase.deleteAccount(localAcc.id, organizationId);
         }
       }
+
       for (const acc of accounts) {
+        const linkedOrgId = acc.linked_org_id ?? null;
+        const linkedOrgBalance =
+          linkedOrgId && acc.linked_org_balance !== null && acc.linked_org_balance !== undefined
+            ? Number(acc.linked_org_balance)
+            : null;
+
         await OfflineDatabase.upsertAccount({
           id: acc.id,
           organization_id: acc.organization_id,
           name: acc.name,
           starting_value: Number(acc.starting_value || 0),
           is_active: Boolean(acc.is_active),
+          linked_org_id: linkedOrgId,
+          linked_org_balance: linkedOrgBalance,
           created_at: acc.created_at,
           updated_at: acc.updated_at,
         }, 'synced');
       }
     }
 
-    // 2. Fetch all transactions (removed limit to ensure older records are not deleted locally)
+    // 2. Fetch recent transactions (limit 10,000 to prevent silent PostgREST 1,000-row cap truncation)
     const { data: txs, error: txErr } = await supabaseAdmin
       .from('transactions')
       .select('*')
       .eq('organization_id', organizationId)
-      .order('occurred_at', { ascending: false });
+      .order('occurred_at', { ascending: false })
+      .limit(10000);
 
     if (!txErr && txs) {
       const serverIds = new Set(txs.map((t) => t.id));
+      const oldestServerTx = txs.length > 0 ? txs[txs.length - 1] : null;
+      const oldestServerEpoch = oldestServerTx?.occurred_at ? new Date(oldestServerTx.occurred_at).getTime() : null;
+      const isPotentiallyTruncated = txs.length >= 1000;
+
       // Fetch all local transactions by setting a high limit
       const localTxs = await OfflineDatabase.getTransactions(organizationId, 1000000);
       for (const localTx of localTxs) {
+        // Protect older transactions beyond the fetched window from silent deletion.
+        // shortcut: timestamp window deletion check instead of full pagination cursor, upgrade to keyset cursor sync when orgs exceed 10k rows
+        if (isPotentiallyTruncated && oldestServerEpoch !== null && !isNaN(oldestServerEpoch)) {
+          const localTxEpoch = localTx.occurred_at ? new Date(localTx.occurred_at).getTime() : null;
+          if (localTxEpoch !== null && !isNaN(localTxEpoch) && localTxEpoch < oldestServerEpoch) {
+            continue; // Outside query window; preserve locally
+          }
+        }
+
         // Remove ANY local transaction that does not exist on the server AND is not pending creation offline
         if (!serverIds.has(localTx.id) && !pendingCreateTxIds.has(localTx.id)) {
           await OfflineDatabase.deleteTransaction(localTx.id, organizationId);
@@ -442,6 +524,8 @@ export class SyncEngine {
           description: tx.description,
           created_at: tx.created_at,
           occurred_at: tx.occurred_at,
+          is_initial: Boolean(tx.is_initial),
+          mirrored_from_tx_id: (tx as { mirrored_from_tx_id?: string | null }).mirrored_from_tx_id ?? null,
         }, 'synced');
       }
     }

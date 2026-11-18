@@ -69,7 +69,9 @@ export class OfflineDatabase {
         description TEXT,
         created_at TEXT,
         occurred_at TEXT,
-        sync_status TEXT DEFAULT 'synced'
+        sync_status TEXT DEFAULT 'synced',
+        is_initial INTEGER DEFAULT 0,
+        mirrored_from_tx_id TEXT
       );
 
       CREATE TABLE IF NOT EXISTS offline_sync_queue (
@@ -99,6 +101,22 @@ export class OfflineDatabase {
       CREATE INDEX IF NOT EXISTS idx_wallet_categories_name ON wallet_categories(organization_id, normalized_name);
       CREATE INDEX IF NOT EXISTS idx_transactions_org_date ON local_transactions(organization_id, occurred_at DESC);
     `);
+
+    // Safe migration: add is_initial column to existing local databases
+    try {
+      await db.execAsync('ALTER TABLE local_transactions ADD COLUMN is_initial INTEGER DEFAULT 0;');
+    } catch {}
+    // Safe migration: add linked organization columns to local_accounts
+    try {
+      await db.execAsync('ALTER TABLE local_accounts ADD COLUMN linked_org_id TEXT;');
+    } catch {}
+    try {
+      await db.execAsync('ALTER TABLE local_accounts ADD COLUMN linked_org_balance REAL;');
+    } catch {}
+    // Safe migration: add mirrored_from_tx_id column to local_transactions
+    try {
+      await db.execAsync('ALTER TABLE local_transactions ADD COLUMN mirrored_from_tx_id TEXT;');
+    } catch {}
   }
 
   // --- Clear All Local Database Data (for Login/Logout hygiene) ---
@@ -121,12 +139,14 @@ export class OfflineDatabase {
     return this.withLock(async () => {
       const db = await this.getDb();
       await db.runAsync(
-        `INSERT INTO local_accounts (id, organization_id, name, starting_value, is_active, created_at, updated_at, sync_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO local_accounts (id, organization_id, name, starting_value, is_active, linked_org_id, linked_org_balance, created_at, updated_at, sync_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name,
            starting_value = excluded.starting_value,
            is_active = excluded.is_active,
+           linked_org_id = excluded.linked_org_id,
+           linked_org_balance = excluded.linked_org_balance,
            updated_at = excluded.updated_at,
            sync_status = excluded.sync_status;`,
         [
@@ -135,6 +155,10 @@ export class OfflineDatabase {
           account.name ?? null,
           account.starting_value ?? 0,
           account.is_active ? 1 : 0,
+          account.linked_org_id ?? null,
+          account.linked_org_balance !== null && account.linked_org_balance !== undefined
+            ? Number(account.linked_org_balance)
+            : null,
           account.created_at ?? null,
           account.updated_at ?? null,
           syncStatus ?? 'synced',
@@ -156,6 +180,11 @@ export class OfflineDatabase {
         name: r.name,
         starting_value: r.starting_value,
         is_active: Boolean(r.is_active),
+        linked_org_id: r.linked_org_id ?? null,
+        linked_org_balance:
+          r.linked_org_balance !== null && r.linked_org_balance !== undefined
+            ? Number(r.linked_org_balance)
+            : null,
         created_at: r.created_at,
         updated_at: r.updated_at,
       }));
@@ -168,7 +197,7 @@ export class OfflineDatabase {
       const condition = includeArchived ? '' : ' AND a.is_active = 1';
       const sql = `
         SELECT 
-          a.id, a.organization_id, a.name, a.starting_value, a.is_active, a.created_at, a.updated_at,
+          a.id, a.organization_id, a.name, a.starting_value, a.is_active, a.linked_org_id, a.linked_org_balance, a.created_at, a.updated_at,
           COALESCE(SUM(
             CASE 
               WHEN t.type = 'income' THEN ABS(t.amount)
@@ -182,22 +211,36 @@ export class OfflineDatabase {
         LEFT JOIN local_transactions t 
           ON (t.account_id = a.id OR (t.type = 'transfer' AND t.transfer_to_account_id = a.id))
           AND t.organization_id = a.organization_id
+          AND (t.is_initial IS NULL OR t.is_initial = 0)
         WHERE a.organization_id = ? ${condition}
         GROUP BY a.id
         ORDER BY a.is_active DESC, a.name ASC;
       `;
       const rows = await db.getAllAsync<any>(sql, [organizationId ?? null]);
-      return rows.map((r) => ({
-        id: r.id,
-        organization_id: r.organization_id,
-        name: r.name,
-        starting_value: r.starting_value,
-        is_active: Boolean(r.is_active),
-        created_at: r.created_at,
-        updated_at: r.updated_at,
-        current_balance: Number(r.starting_value || 0) + Number(r.balance_delta || 0),
-        transaction_count: r.transaction_count,
-      }));
+      return rows.map((r) => {
+        const linkedOrgId = r.linked_org_id ?? null;
+        const linkedOrgBalance =
+          r.linked_org_balance !== null && r.linked_org_balance !== undefined
+            ? Number(r.linked_org_balance)
+            : null;
+        const currentBalance = linkedOrgId
+          ? Number(linkedOrgBalance ?? 0)
+          : Number(r.starting_value || 0) + Number(r.balance_delta || 0);
+
+        return {
+          id: r.id,
+          organization_id: r.organization_id,
+          name: r.name,
+          starting_value: r.starting_value,
+          is_active: Boolean(r.is_active),
+          linked_org_id: linkedOrgId,
+          linked_org_balance: linkedOrgBalance,
+          created_at: r.created_at,
+          updated_at: r.updated_at,
+          current_balance: currentBalance,
+          transaction_count: r.transaction_count,
+        };
+      });
     });
   }
   public static async deleteAccount(id: string, organizationId: string): Promise<void> {
@@ -242,9 +285,10 @@ export class OfflineDatabase {
       await db.runAsync(
         `INSERT INTO local_transactions (
            id, organization_id, user_id, type, amount, account_id, transfer_to_account_id,
-           category, category_id, description, created_at, occurred_at, sync_status
+           category, category_id, description, created_at, occurred_at, sync_status, is_initial,
+           mirrored_from_tx_id
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            amount = excluded.amount,
            type = excluded.type,
@@ -254,7 +298,9 @@ export class OfflineDatabase {
            category_id = excluded.category_id,
            description = excluded.description,
            occurred_at = excluded.occurred_at,
-           sync_status = excluded.sync_status;`,
+           sync_status = excluded.sync_status,
+           is_initial = excluded.is_initial,
+           mirrored_from_tx_id = excluded.mirrored_from_tx_id;`,
         [
           tx.id ?? null,
           tx.organization_id ?? null,
@@ -269,6 +315,8 @@ export class OfflineDatabase {
           tx.created_at ?? null,
           tx.occurred_at ?? null,
           syncStatus ?? 'synced',
+          tx.is_initial ? 1 : 0,
+          tx.mirrored_from_tx_id ?? null,
         ]
       );
     });
@@ -314,6 +362,8 @@ export class OfflineDatabase {
         created_at: r.created_at,
         occurred_at: r.occurred_at,
         sync_status: r.sync_status,
+        is_initial: Boolean(r.is_initial),
+        mirrored_from_tx_id: r.mirrored_from_tx_id ?? null,
       }));
     });
   }
@@ -342,10 +392,31 @@ export class OfflineDatabase {
   public static async getCategories(orgId: string, type?: 'income' | 'expense'): Promise<WalletCategory[]> {
     return this.withLock(async () => {
       const db = await this.getDb();
-      const rows = await db.getAllAsync<any>(
-        `SELECT * FROM wallet_categories WHERE organization_id = ? ORDER BY created_at ASC;`,
-        [orgId ?? null]
-      );
+      const [rows, usageRows] = await Promise.all([
+        db.getAllAsync<any>(
+          `SELECT * FROM wallet_categories WHERE organization_id = ? ORDER BY created_at ASC;`,
+          [orgId ?? null]
+        ),
+        db.getAllAsync<{ category_id: string | null; category: string | null }>(
+          // shortcut: caps usage count scan at 10,000 rows; switch to SQL GROUP BY if local store exceeds 10k transactions
+          `SELECT category_id, category FROM local_transactions WHERE organization_id = ? AND (category_id IS NOT NULL OR category IS NOT NULL) LIMIT 10000;`,
+          [orgId ?? null]
+        ),
+      ]);
+
+      const idCounts = new Map<string, number>();
+      const nameCounts = new Map<string, number>();
+      for (const tx of usageRows || []) {
+        if (tx.category_id) {
+          idCounts.set(tx.category_id, (idCounts.get(tx.category_id) ?? 0) + 1);
+        } else if (tx.category) {
+          const key = tx.category.trim().toLowerCase();
+          if (key) {
+            nameCounts.set(key, (nameCounts.get(key) ?? 0) + 1);
+          }
+        }
+      }
+
       const categories: WalletCategory[] = (rows || []).map((r) => ({
         id: r.id,
         organization_id: r.organization_id,
@@ -364,6 +435,13 @@ export class OfflineDatabase {
         sync_status: r.sync_status,
         local_id: r.local_id,
       }));
+
+      const getUsage = (c: WalletCategory) =>
+        (idCounts.get(c.id) ?? 0) +
+        (nameCounts.get((c.normalized_name || c.display_name || '').trim().toLowerCase()) ?? 0);
+
+      categories.sort((a, b) => getUsage(b) - getUsage(a));
+
       if (type) {
         const tag = type === 'income' ? 'type:income' : 'type:expense';
         return categories.filter((c) => c.aliases.includes(tag));

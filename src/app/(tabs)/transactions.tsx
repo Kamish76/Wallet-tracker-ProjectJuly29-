@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,15 +16,19 @@ import { SyncEngine } from '@/lib/sync/syncEngine';
 import { WalletAuthService } from '@/lib/auth/walletAuth';
 import { AddTransactionModal } from '@/components/AddTransactionModal';
 import { EditTransactionModal } from '@/components/EditTransactionModal';
-import { WidgetService } from '@/lib/widget/widgetService';
-import { Colors } from '@/theme/colors';
+import { useTheme } from '@/theme/ThemeContext';
 import { Tokens } from '@/theme/tokens';
+import type { ThemeColors } from '@/theme/colors';
 import { TransactionCard } from '@/components/TransactionCard';
-import type { WalletAccount, WalletTransaction, TransactionType } from '@/types/wallet';
+import type { WalletAccount, WalletTransaction } from '@/types/wallet';
 
 export default function TransactionsScreen() {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [accounts, setAccounts] = useState<WalletAccount[]>([]);
+  const [allAccounts, setAllAccounts] = useState<WalletAccount[]>([]);
   const [filterType, setFilterType] = useState<string>('all');
   const [modalVisible, setModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -40,21 +44,22 @@ export default function TransactionsScreen() {
   const loadLocalData = useCallback(async (organizationId: string, currentOffset = 0) => {
     try {
       const txs = await OfflineDatabase.getTransactions(organizationId, 20, currentOffset);
-      const accs = await OfflineDatabase.getAccounts(organizationId);
+      const allAccs = await OfflineDatabase.getAccounts(organizationId, true);
       
       if (currentOffset === 0) {
         setTransactions(txs);
       } else {
         setTransactions((prev) => {
-          const existingIds = new Set(prev.map(t => t.id));
-          const newTxs = txs.filter(t => !existingIds.has(t.id));
+          const existingIds = new Set(prev.map((t) => t.id));
+          const newTxs = txs.filter((t) => !existingIds.has(t.id));
           return [...prev, ...newTxs];
         });
       }
       
       setOffset(currentOffset + 20);
       setHasMore(txs.length === 20);
-      setAccounts(accs);
+      setAllAccounts(allAccs);
+      setAccounts(allAccs.filter((a) => a.is_active));
     } catch (e) {
       console.log(e);
     }
@@ -80,8 +85,24 @@ export default function TransactionsScreen() {
     init();
   }, [loadLocalData]);
 
-  // 1. Subscribe to SyncEngine notifications so transactions update automatically after sync
-  
+  useFocusEffect(
+    useCallback(() => {
+      if (orgId) {
+        loadLocalData(orgId, 0);
+      }
+    }, [orgId, loadLocalData])
+  );
+
+  useEffect(() => {
+    if (!orgId) return;
+    const unsubscribe = SyncEngine.subscribe((_count, isSyncing) => {
+      if (!isSyncing) {
+        loadLocalData(orgId, 0);
+      }
+    });
+    return () => unsubscribe();
+  }, [orgId, loadLocalData]);
+
   const handleEditTransaction = useCallback((tx: WalletTransaction) => {
     setSelectedTx(tx);
     setEditModalVisible(true);
@@ -91,7 +112,7 @@ export default function TransactionsScreen() {
     if (!orgId) return;
     Alert.alert(
       'Delete Transaction',
-      `Delete ${tx.category || 'this transaction'} of $${Number(tx.amount).toFixed(2)}?`,
+      `Delete ${tx.category || 'this transaction'}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -102,15 +123,11 @@ export default function TransactionsScreen() {
               await OfflineDatabase.deleteTransaction(tx.id, orgId);
               await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', {
                 id: tx.id,
-                organization_id: orgId,
+                organization_id: tx.organization_id || orgId,
               });
-              if (SyncEngine.getOnlineStatus()) {
-                SyncEngine.syncNow(orgId).catch(() => {});
-              }
-              WidgetService.refreshWidgetData(orgId || undefined).catch(() => {});
               await loadLocalData(orgId, 0);
-            } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to delete transaction.');
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Failed to delete transaction.');
             }
           },
         },
@@ -118,32 +135,13 @@ export default function TransactionsScreen() {
     );
   }, [orgId, loadLocalData]);
 
-
-  useEffect(() => {
-    const unsubscribe = SyncEngine.subscribe((queueCount, isSyncing) => {
-      if (!isSyncing && orgId) {
-        loadLocalData(orgId);
-      }
-    });
-    return () => unsubscribe();
-  }, [orgId, loadLocalData]);
-
-  // 2. Refresh data whenever user navigates back to Transactions tab
-  useFocusEffect(
-    useCallback(() => {
-      if (orgId) {
-        loadLocalData(orgId);
-      }
-    }, [orgId, loadLocalData])
-  );
-
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     if (!orgId) return;
     setRefreshing(true);
     await SyncEngine.syncNow(orgId);
     await loadLocalData(orgId, 0);
     setRefreshing(false);
-  };
+  }, [orgId, loadLocalData]);
 
   const filteredTransactions = transactions.filter((tx) => {
     if (filterType === 'all') return true;
@@ -154,92 +152,91 @@ export default function TransactionsScreen() {
   });
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={styles.container}>
         {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Transactions</Text>
-        <TouchableOpacity
-          style={styles.syncButton}
-          onPress={handleRefresh}
-          disabled={refreshing}
-        >
-          <RefreshCw size={18} color={Colors.primary} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Filter Pills */}
-      <View style={styles.filterRow}>
-        {(['all', 'income', 'expense', 'transfer'] as const).map((type) => (
+        <View style={styles.header}>
+          <Text style={styles.title}>Transactions</Text>
           <TouchableOpacity
-            key={type}
-            style={[
-              styles.filterPill,
-              filterType === type && styles.filterPillActive,
-            ]}
-            onPress={() => setFilterType(type)}
+            style={styles.syncButton}
+            onPress={handleRefresh}
+            disabled={refreshing}
           >
-            <Text
-              style={[
-                styles.filterPillText,
-                filterType === type && styles.filterPillTextActive,
-              ]}
-            >
-              {type.charAt(0).toUpperCase() + type.slice(1)}
-            </Text>
+            <RefreshCw size={18} color={colors.primary} />
           </TouchableOpacity>
-        ))}
-      </View>
+        </View>
 
-      {/* Transactions List */}
-      <FlatList
-        data={filteredTransactions}
-        keyExtractor={(item) => item.id}
-        style={styles.listContainer}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={Colors.primary}
-          />
-        }
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-        ListEmptyComponent={
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>No transactions found</Text>
-          </View>
-        }
-        ListFooterComponent={
-          isFetchingMore ? (
-            <View style={{ paddingVertical: 20 }}>
-              <ActivityIndicator size="small" color={Colors.primary} />
+        {/* Filter Pills */}
+        <View style={styles.filterRow}>
+          {(['all', 'income', 'expense', 'transfer'] as const).map((type) => (
+            <TouchableOpacity
+              key={type}
+              style={[
+                styles.filterPill,
+                filterType === type && styles.filterPillActive,
+              ]}
+              onPress={() => setFilterType(type)}
+            >
+              <Text
+                style={[
+                  styles.filterPillText,
+                  filterType === type && styles.filterPillTextActive,
+                ]}
+              >
+                {type.charAt(0).toUpperCase() + type.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Transactions List */}
+        <FlatList
+          data={filteredTransactions}
+          keyExtractor={(item) => item.id}
+          style={styles.listContainer}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+            />
+          }
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          ListEmptyComponent={
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>No transactions found</Text>
             </View>
-          ) : null
-        }
-        renderItem={({ item: tx }) => (
-          <TransactionCard
-            tx={tx}
-            accounts={accounts}
-            onEdit={handleEditTransaction}
-            onDelete={handleDeleteConfirm}
-            currency={currency}
-          />
-        )}
-      />
+          }
+          ListFooterComponent={
+            isFetchingMore ? (
+              <View style={{ paddingVertical: 20 }}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            ) : null
+          }
+          renderItem={({ item: tx }) => (
+            <TransactionCard
+              tx={tx}
+              accounts={allAccounts}
+              onEdit={handleEditTransaction}
+              onDelete={handleDeleteConfirm}
+              currency={currency}
+            />
+          )}
+        />
       </View>
 
       {/* Floating Add Transaction Button (FAB) at bottom-right */}
       <TouchableOpacity
         style={styles.fabButton}
         onPress={() => {
-          console.log(`[Perf Tracker] 'Add Transaction' button pressed at ${new Date().toISOString()} (${Date.now()})`);
           setModalVisible(true);
         }}
         activeOpacity={0.85}
       >
-        <Plus size={22} color={Colors.background} />
+        <Plus size={22} color={isDark ? colors.background : '#FFFFFF'} />
         <Text style={styles.fabText}>Add Transaction</Text>
       </TouchableOpacity>
 
@@ -248,7 +245,7 @@ export default function TransactionsScreen() {
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         onSuccess={() => {
-          if (orgId) loadLocalData(orgId, 0); // Reset to top
+          if (orgId) loadLocalData(orgId, 0);
         }}
         orgId={orgId}
         userId={userId}
@@ -268,7 +265,7 @@ export default function TransactionsScreen() {
         }}
         orgId={orgId}
         userId={userId}
-        accounts={accounts}
+        accounts={allAccounts}
         transaction={selectedTx}
         currency={currency}
       />
@@ -276,89 +273,93 @@ export default function TransactionsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-    padding: Tokens.spacing.md,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: Tokens.spacing.md,
-    paddingTop: Tokens.spacing.sm,
-  },
-  title: {
-    ...Tokens.typography.h1,
-  },
-  syncButton: {
-    backgroundColor: Colors.surfaceElevated,
-    padding: Tokens.spacing.sm,
-    borderRadius: Tokens.radius.full,
-    borderWidth: 1,
-    borderColor: Colors.borderGlow,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    marginBottom: Tokens.spacing.md,
-  },
-  filterPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: Tokens.radius.full,
-    backgroundColor: Colors.surfaceElevated,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  filterPillActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  filterPillText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.textMuted,
-  },
-  filterPillTextActive: {
-    color: Colors.background,
-  },
-  listContainer: {
-    flex: 1,
-  },
-  emptyCard: {
-    ...Tokens.card,
-    alignItems: 'center',
-    padding: Tokens.spacing.xl,
-  },
-  emptyText: {
-    ...Tokens.typography.body,
-    color: Colors.textMuted,
-  },
-  fabButton: {
-    position: 'absolute',
-    right: 20,
-    bottom: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: Tokens.radius.full,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
-    elevation: 8,
-    zIndex: 100,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  fabText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.background,
-    marginLeft: 8,
-  },
-});
+const createStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+      padding: Tokens.spacing.md,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: Tokens.spacing.md,
+      paddingTop: Tokens.spacing.sm,
+    },
+    title: {
+      ...Tokens.typography.h1,
+      color: colors.textWhite,
+    },
+    syncButton: {
+      backgroundColor: colors.surfaceElevated,
+      padding: Tokens.spacing.sm,
+      borderRadius: Tokens.radius.full,
+      borderWidth: 1,
+      borderColor: colors.borderGlow,
+    },
+    filterRow: {
+      flexDirection: 'row',
+      marginBottom: Tokens.spacing.md,
+    },
+    filterPill: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: Tokens.radius.full,
+      backgroundColor: colors.surfaceElevated,
+      marginRight: 8,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    filterPillActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    filterPillText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textMuted,
+    },
+    filterPillTextActive: {
+      color: isDark ? colors.background : '#FFFFFF',
+    },
+    listContainer: {
+      flex: 1,
+    },
+    emptyCard: {
+      ...Tokens.card,
+      backgroundColor: colors.surfaceCard,
+      borderColor: colors.border,
+      alignItems: 'center',
+      padding: Tokens.spacing.xl,
+    },
+    emptyText: {
+      ...Tokens.typography.body,
+      color: colors.textMuted,
+    },
+    fabButton: {
+      position: 'absolute',
+      right: 20,
+      bottom: 24,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.primary,
+      paddingHorizontal: 20,
+      paddingVertical: 14,
+      borderRadius: Tokens.radius.full,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.45,
+      shadowRadius: 10,
+      elevation: 8,
+      zIndex: 100,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.4)',
+    },
+    fabText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: isDark ? colors.background : '#FFFFFF',
+      marginLeft: 8,
+    },
+  });

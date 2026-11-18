@@ -9,87 +9,23 @@ import {
   StyleSheet,
   ScrollView,
   InteractionManager,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { X, Plus, Delete, AlertCircle, ChevronDown } from 'lucide-react-native';
+import { X, Plus, Delete, Trash2, AlertCircle, ChevronDown } from 'lucide-react-native';
 
-// Safely evaluates arithmetic expressions without eval()
-function evaluateMathExpression(expr: string): number {
-  try {
-    let clean = expr
-      .replace(/×/g, '*')
-      .replace(/÷/g, '/')
-      .replace(/[^0-9+\-*/.]/g, '');
-
-    // Allow leading negative sign
-    if (clean.startsWith('-')) {
-      clean = '0' + clean;
-    }
-
-    if (!clean || /^[^0-9(]/.test(clean)) return 0;
-
-    const tokens: (number | string)[] = [];
-    let curNum = '';
-    for (const char of clean) {
-      if ('+-*/'.includes(char)) {
-        if (curNum !== '') {
-          tokens.push(parseFloat(curNum));
-          curNum = '';
-        }
-        tokens.push(char);
-      } else {
-        curNum += char;
-      }
-    }
-    if (curNum !== '') {
-      tokens.push(parseFloat(curNum));
-    }
-
-    if (tokens.length === 0) return 0;
-    if (tokens.length === 1 && typeof tokens[0] === 'number') return tokens[0];
-
-    const pass1: (number | string)[] = [];
-    let i = 0;
-    while (i < tokens.length) {
-      const token = tokens[i];
-      if (token === '*' || token === '/') {
-        const prev = pass1.pop() as number;
-        const next = (tokens[i + 1] ?? 1) as number;
-        if (token === '*') {
-          pass1.push(prev * next);
-        } else {
-          pass1.push(next === 0 ? 0 : prev / next);
-        }
-        i += 2;
-      } else {
-        pass1.push(token);
-        i++;
-      }
-    }
-
-    let result = (pass1[0] as number) || 0;
-    i = 1;
-    while (i < pass1.length) {
-      const op = pass1[i];
-      const val = (pass1[i + 1] ?? 0) as number;
-      if (op === '+') result += val;
-      else if (op === '-') result -= val;
-      i += 2;
-    }
-
-    return isNaN(result) ? 0 : Number(result.toFixed(2));
-  } catch {
-    return 0;
-  }
-}
+import { evaluateMathExpression } from '@/lib/utils/math';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
-import { Colors } from '@/theme/colors';
+import { Colors, type ThemeColors } from '@/theme/colors';
+import { useTheme } from '@/theme/ThemeContext';
 import { Tokens } from '@/theme/tokens';
 import { generateUUID } from '@/lib/utils/uuid';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
 import { WidgetService } from '@/lib/widget/widgetService';
 import { formatCurrency } from '@/lib/utils/currency';
+import { formatLocalDateInput, mergeDateWithOriginalTime } from '@/lib/utils/date';
 import type { WalletAccount, WalletTransaction, TransactionType, WalletCategory } from '@/types/wallet';
 
 interface AddTransactionModalProps {
@@ -100,6 +36,7 @@ interface AddTransactionModalProps {
   userId: string | null;
   accounts: WalletAccount[];
   initialType?: TransactionType;
+  transaction?: WalletTransaction | null;
   currency?: string;
 }
 
@@ -111,14 +48,23 @@ export function AddTransactionModal({
   userId,
   accounts,
   initialType,
+  transaction,
   currency = 'USD',
 }: AddTransactionModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
+  const isEditMode = transaction !== undefined;
+  const isMirroredFromOrg = Boolean(transaction?.mirrored_from_tx_id);
+  const effectiveVisible = isEditMode ? Boolean(visible && transaction) : visible;
+
   const [txType, setTxType] = useState<TransactionType>('expense_personal');
   const [displayExpr, setDisplayExpr] = useState('0');
   const [accountId, setAccountId] = useState('');
   const [transferToId, setTransferToId] = useState('');
   const [category, setCategory] = useState('');
   const [notes, setNotes] = useState('');
+  const [txDate, setTxDate] = useState(() => formatLocalDateInput(new Date().toISOString()));
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState<WalletCategory[]>([]);
   const [showCustomCatInput, setShowCustomCatInput] = useState(false);
@@ -129,18 +75,19 @@ export function AddTransactionModal({
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [prevInitialType, setPrevInitialType] = useState(initialType);
 
+  const selectableAccounts = useMemo(
+    () =>
+      txType === 'transfer'
+        ? accounts
+        : accounts.filter((a) => !a.linked_org_id || (Boolean(transaction) && a.id === transaction?.account_id)),
+    [accounts, txType, transaction]
+  );
+
   // Sync initialType without triggering a second render pass during animation
-  if (initialType !== prevInitialType) {
+  if (!isEditMode && initialType !== prevInitialType) {
     setPrevInitialType(initialType);
     if (initialType) setTxType(initialType);
   }
-
-  // DEBUG LOGGING
-  useEffect(() => {
-    console.log('[AddTransactionModal] State changed:', {
-      visible, txType, showAccountDropdown, showCategoryDropdown
-    });
-  }, [visible, txType, showAccountDropdown, showCategoryDropdown]);
 
   const leftExpanded = showAccountDropdown === 'from';
   const rightExpanded = showAccountDropdown === 'to' || showCategoryDropdown;
@@ -162,14 +109,13 @@ export function AddTransactionModal({
   };
 
   const toggleAccountDropdown = (type: 'from' | 'to' | null) => {
-    console.log('[AddTransactionModal] toggleAccountDropdown called with:', type);
+    if (isMirroredFromOrg && type !== null) return;
     const nextState = showAccountDropdown === type ? null : type;
     setShowAccountDropdown(nextState);
     if (nextState) setShowCategoryDropdown(false);
   };
 
   const toggleCategoryDropdown = () => {
-    console.log('[AddTransactionModal] toggleCategoryDropdown called');
     const nextState = !showCategoryDropdown;
     setShowCategoryDropdown(nextState);
     if (nextState) setShowAccountDropdown(null);
@@ -180,7 +126,7 @@ export function AddTransactionModal({
   }, [displayExpr]);
 
   const handleKeypadPress = (key: string) => {
-    console.log('[AddTransactionModal] Keypad pressed:', key, 'Current display:', displayExpr);
+    if (isMirroredFromOrg) return;
     if (key === '=') {
       const val = evaluateMathExpression(displayExpr);
       setDisplayExpr(String(val));
@@ -215,8 +161,18 @@ export function AddTransactionModal({
   };
 
   useEffect(() => {
-    if (visible) {
-      console.log(`[Perf Tracker] 'AddTransactionModal' rendering visible=true at ${new Date().toISOString()} (${Date.now()})`);
+    if (effectiveVisible) {
+      if (transaction) {
+        setTxType(transaction.type);
+        setDisplayExpr(String(transaction.amount ?? '0'));
+        setAccountId(transaction.account_id ?? (accounts[0]?.id || ''));
+        setTransferToId(transaction.transfer_to_account_id ?? '');
+        setCategory(transaction.category ?? '');
+        setNotes(transaction.description ?? '');
+        setTxDate(formatLocalDateInput(transaction.occurred_at));
+      } else {
+        setTxDate(formatLocalDateInput(new Date().toISOString()));
+      }
     } else {
       setShowCustomCatInput(false);
       setCustomCatName('');
@@ -225,20 +181,31 @@ export function AddTransactionModal({
       setDisplayExpr('0');
       setCategory('');
       setNotes('');
+      setTxDate(isEditMode ? '' : formatLocalDateInput(new Date().toISOString()));
       setTransferToId('');
     }
-  }, [visible]);
+  }, [effectiveVisible, isEditMode, transaction, accounts]);
 
   useEffect(() => {
-    if (visible && accounts.length > 0 && !accountId) {
-      setAccountId(accounts[0].id);
+    if (!effectiveVisible) return;
+    if (
+      transaction?.account_id &&
+      !accountId &&
+      selectableAccounts.some((a) => a.id === transaction.account_id)
+    ) {
+      setAccountId(transaction.account_id);
+      return;
     }
-  }, [visible, accounts, accountId]);
+    if (selectableAccounts.length > 0 && !selectableAccounts.some((a) => a.id === accountId)) {
+      setAccountId(selectableAccounts[0].id);
+    } else if (selectableAccounts.length === 0 && accountId !== '') {
+      setAccountId('');
+    }
+  }, [effectiveVisible, selectableAccounts, accountId, transaction]);
 
   useEffect(() => {
-    if (visible && orgId) {
+    if (effectiveVisible && orgId) {
       InteractionManager.runAfterInteractions(() => {
-        console.log(`[Perf Tracker] 'AddTransactionModal' starting background data fetch after animations at ${new Date().toISOString()} (${Date.now()})`);
         OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
         OfflineDatabase.getAccountsWithBalances(orgId).then((accBalances) => {
           const balances: Record<string, number> = {};
@@ -246,11 +213,10 @@ export function AddTransactionModal({
             balances[b.id] = b.current_balance;
           }
           setAccountBalances(balances);
-          console.log(`[Perf Tracker] 'AddTransactionModal' finished background data fetch at ${new Date().toISOString()} (${Date.now()})`);
         }).catch(() => {});
       });
     }
-  }, [visible, orgId, accounts]);
+  }, [effectiveVisible, orgId, accounts]);
 
   const filteredCategories = categories.filter((c) => {
     if (txType === 'income') return c.aliases?.includes('type:income');
@@ -305,21 +271,36 @@ export function AddTransactionModal({
     setDisplayExpr('0');
     setCategory('');
     setNotes('');
+    if (!isEditMode) {
+      setTxDate(formatLocalDateInput(new Date().toISOString()));
+    }
     setTransferToId('');
     setShowCustomCatInput(false);
     setCustomCatName('');
   };
 
-  const handleAddTransaction = async () => {
+  const handleSubmitTransaction = async () => {
     if (!orgId || !userId) return;
+    if (isEditMode && !transaction) return;
+
     const evaluatedAmount = evaluateMathExpression(displayExpr);
-    if (evaluatedAmount === 0) {
-      Alert.alert('Invalid Amount', 'Transaction amount cannot be 0.');
+    const valValidation = SecurityService.validateAmount(Math.abs(evaluatedAmount));
+    if (!valValidation.isValid) {
+      Alert.alert('Invalid Amount', valValidation.error || 'Transaction amount cannot be 0.');
       return;
     }
-    const finalAmount = Math.abs(evaluatedAmount);
+    const finalAmount = valValidation.value;
     if (!accountId) {
       Alert.alert('No Account', 'Please select a wallet sub-account.');
+      return;
+    }
+    const chosenSource = accounts.find((a) => a.id === accountId);
+    const isKeepingExistingLinkedAccount = Boolean(transaction && accountId === transaction.account_id);
+    if (txType !== 'transfer' && chosenSource?.linked_org_id && !isKeepingExistingLinkedAccount) {
+      Alert.alert(
+        'Linked Account Read-Only',
+        'Direct income and expenses are disabled on linked organization accounts. Use Transfer or record entries in the linked organization.'
+      );
       return;
     }
     if (txType === 'transfer' && (!transferToId || transferToId === accountId)) {
@@ -329,70 +310,155 @@ export function AddTransactionModal({
       );
       return;
     }
+    const trimmedDate = txDate.trim();
+    if (trimmedDate && !/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
+      Alert.alert('Invalid Date', 'Please enter a valid date in YYYY-MM-DD format.');
+      return;
+    }
 
     setSaving(true);
     try {
-      await RateLimiter.assertAllowed('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+      const rateStatus = await RateLimiter.checkLimit('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+      if (!rateStatus.allowed) {
+        Alert.alert('Rate Limit Exceeded', `Too many attempts. Please try again in ${rateStatus.retryAfterSeconds}s.`);
+        setSaving(false);
+        return;
+      }
       await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
 
-      const newTxId = generateUUID();
-      const now = new Date().toISOString();
-      const newTx: WalletTransaction = {
-        id: newTxId,
-        organization_id: orgId,
-        user_id: userId,
-        type: txType,
-        amount: finalAmount,
-        account_id: accountId,
-        transfer_to_account_id: txType === 'transfer' ? transferToId : null,
-        category: SecurityService.sanitizeText(category, 60) || null,
-        description: SecurityService.sanitizeText(notes, 200) || null,
-        created_at: now,
-        occurred_at: now,
-        sync_status: 'pending',
-      };
+      const sanitizedCategory = SecurityService.sanitizeText(category, 60) || null;
+      const sanitizedNotes = SecurityService.sanitizeText(notes, 200) || null;
 
-      // 1. Write immediately to local SQLite for instant offline reactivity
-      await OfflineDatabase.upsertTransaction(newTx, 'pending');
-
-      // 2. Enqueue mutation in offline sync queue
-      await OfflineDatabase.enqueueMutation('CREATE_TRANSACTION', newTx);
-
-      // 3. Trigger background sync if online
-      if (SyncEngine.getOnlineStatus()) {
-        SyncEngine.syncNow(orgId);
+      if (transaction) {
+        const updatedTx: WalletTransaction = {
+          ...transaction,
+          type: isMirroredFromOrg ? transaction.type : txType,
+          amount: isMirroredFromOrg ? transaction.amount : finalAmount,
+          account_id: isMirroredFromOrg ? transaction.account_id : accountId,
+          transfer_to_account_id: isMirroredFromOrg
+            ? (transaction.transfer_to_account_id ?? null)
+            : (txType === 'transfer' ? (transferToId || null) : null),
+          category: sanitizedCategory,
+          description: sanitizedNotes,
+          occurred_at: trimmedDate
+            ? mergeDateWithOriginalTime(trimmedDate, transaction.occurred_at)
+            : transaction.occurred_at,
+          sync_status: 'pending',
+        };
+        await OfflineDatabase.upsertTransaction(updatedTx, 'pending');
+        await OfflineDatabase.enqueueMutation('UPDATE_TRANSACTION', updatedTx);
+      } else {
+        const now = new Date().toISOString();
+        const newTx: WalletTransaction = {
+          id: generateUUID(),
+          organization_id: orgId,
+          user_id: userId,
+          type: txType,
+          amount: finalAmount,
+          account_id: accountId,
+          transfer_to_account_id: txType === 'transfer' ? transferToId : null,
+          category: sanitizedCategory,
+          description: sanitizedNotes,
+          created_at: now,
+          occurred_at: trimmedDate ? mergeDateWithOriginalTime(trimmedDate, now) : now,
+          sync_status: 'pending',
+        };
+        // 1. Write immediately to local SQLite for instant offline reactivity
+        await OfflineDatabase.upsertTransaction(newTx, 'pending');
+        // 2. Enqueue mutation in offline sync queue
+        await OfflineDatabase.enqueueMutation('CREATE_TRANSACTION', newTx);
       }
 
-      // 4. Update Android home screen widget immediately
+      if (SyncEngine.getOnlineStatus()) {
+        SyncEngine.syncNow(orgId).catch(() => {});
+      }
       WidgetService.refreshWidgetData(orgId || undefined).catch(() => {});
 
       resetForm();
       onSuccess();
       onClose();
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to add transaction.');
+      Alert.alert(
+        'Error',
+        e?.message || (transaction ? 'Failed to update transaction.' : 'Failed to add transaction.')
+      );
     } finally {
       setSaving(false);
     }
   };
 
+  const handleDeleteTransaction = () => {
+    if (!orgId || !transaction) return;
+    Alert.alert(
+      'Delete Transaction',
+      'Are you sure you want to delete this transaction? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setSaving(true);
+            try {
+              const rateStatus = await RateLimiter.checkLimit('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+              if (!rateStatus.allowed) {
+                Alert.alert('Rate Limit Exceeded', `Too many attempts. Please try again in ${rateStatus.retryAfterSeconds}s.`);
+                setSaving(false);
+                return;
+              }
+              await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+
+              await OfflineDatabase.deleteTransaction(transaction.id, orgId);
+              await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', {
+                id: transaction.id,
+                organization_id: orgId,
+              });
+
+              if (SyncEngine.getOnlineStatus()) {
+                SyncEngine.syncNow(orgId).catch(() => {});
+              }
+              WidgetService.refreshWidgetData(orgId || undefined).catch(() => {});
+
+              onSuccess();
+              onClose();
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to delete transaction.');
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={effectiveVisible} animationType="slide" transparent>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.modalOverlay}>
         <View style={[styles.modalCard, { maxHeight: '95%' }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add Transaction</Text>
+            <Text style={styles.modalTitle}>{transaction ? 'Edit Transaction' : 'Add Transaction'}</Text>
             <TouchableOpacity
               onPress={() => {
                 resetForm();
                 onClose();
               }}
             >
-              <X size={22} color={Colors.textMuted} />
+              <X size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={[styles.formScroll, { flexShrink: 1 }]} showsVerticalScrollIndicator={true}>
+            {isMirroredFromOrg && (
+              <View style={[styles.warningRow, { marginBottom: 12, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.border }]}>
+                <AlertCircle size={15} color={colors.offline} />
+                <Text style={[styles.warningText, { flex: 1 }]}>
+                  Mirrored from Organization — amount and accounts sync automatically from the organization ledger.
+                </Text>
+              </View>
+            )}
+
             {/* Type Selector */}
             <View style={styles.typeSelectorRow}>
               {(
@@ -404,9 +470,11 @@ export function AddTransactionModal({
               ).map((item) => (
                 <TouchableOpacity
                   key={item.key}
+                  disabled={isMirroredFromOrg}
                   style={[
                     styles.typeBtn,
                     txType === item.key && styles.typeBtnActive,
+                    isMirroredFromOrg && txType !== item.key && { opacity: 0.4 },
                   ]}
                   onPress={() => setTxType(item.key)}
                 >
@@ -423,14 +491,22 @@ export function AddTransactionModal({
             </View>
 
             {/* Display Area */}
-            <TouchableOpacity activeOpacity={1} onPress={() => inputRef.current?.focus()} style={styles.displayArea}>
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => {
+                if (!isMirroredFromOrg) inputRef.current?.focus();
+              }}
+              style={[styles.displayArea, isMirroredFromOrg && { opacity: 0.7 }]}
+            >
               <TextInput
                 ref={inputRef}
-                autoFocus
+                autoFocus={!isMirroredFromOrg}
+                editable={!isMirroredFromOrg}
                 showSoftInputOnFocus={false}
                 caretHidden
                 style={{ position: 'absolute', width: 0, height: 0, opacity: 0 }}
                 onKeyPress={(e) => {
+                  if (isMirroredFromOrg) return;
                   const key = e.nativeEvent.key;
                   if (key >= '0' && key <= '9') {
                     handleKeypadPress(key);
@@ -453,7 +529,7 @@ export function AddTransactionModal({
                 <View style={{ flex: 1, alignItems: 'flex-end', paddingRight: 12 }}>
                   <Text style={[
                     styles.displayText,
-                    txType === 'income' ? { color: Colors.success } : txType === 'expense_personal' ? { color: Colors.error } : { color: Colors.offline }
+                    txType === 'income' ? { color: colors.income } : txType === 'expense_personal' ? { color: colors.expense } : { color: colors.offline }
                   ]}>
                     {displayExpr}
                   </Text>
@@ -461,13 +537,20 @@ export function AddTransactionModal({
                     <Text style={styles.evalText}>= {formatCurrency(evaluatedAmount, currency)}</Text>
                   )}
                 </View>
-                <TouchableOpacity onPress={() => handleKeypadPress('BACKSPACE')} onLongPress={() => setDisplayExpr('0')} style={styles.backspaceBtn}>
-                  <Delete size={24} color={Colors.textLight} />
+                <TouchableOpacity
+                  disabled={isMirroredFromOrg}
+                  onPress={() => handleKeypadPress('BACKSPACE')}
+                  onLongPress={() => {
+                    if (!isMirroredFromOrg) setDisplayExpr('0');
+                  }}
+                  style={[styles.backspaceBtn, isMirroredFromOrg && { opacity: 0.4 }]}
+                >
+                  <Delete size={24} color={colors.textLight} />
                 </TouchableOpacity>
               </View>
               {evaluatedAmount < 0 && (
                 <View style={styles.warningRow}>
-                  <AlertCircle size={14} color={Colors.offline} />
+                  <AlertCircle size={14} color={colors.offline} />
                   <Text style={styles.warningText}>Negative result will be recorded as a positive value</Text>
                 </View>
               )}
@@ -481,13 +564,14 @@ export function AddTransactionModal({
                 {txType === 'transfer' ? 'From' : 'Account'}
               </Text>
               <TouchableOpacity
-                style={[styles.selectorButton, showAccountDropdown === 'from' && styles.selectorButtonActive]}
+                disabled={isMirroredFromOrg}
+                style={[styles.selectorButton, showAccountDropdown === 'from' && styles.selectorButtonActive, isMirroredFromOrg && { opacity: 0.6 }]}
                 onPress={() => toggleAccountDropdown('from')}
               >
                 <Text style={styles.selectorButtonText} numberOfLines={1}>
                   {accounts.find(a => a.id === accountId)?.name || 'Select Account'}
                 </Text>
-                <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
+                <ChevronDown size={16} color={colors.textLight} style={{ position: 'absolute', right: 12 }} />
               </TouchableOpacity>
             </View>
 
@@ -499,13 +583,14 @@ export function AddTransactionModal({
 
               {txType === 'transfer' ? (
                 <TouchableOpacity
-                  style={[styles.selectorButton, showAccountDropdown === 'to' && styles.selectorButtonActive]}
+                  disabled={isMirroredFromOrg}
+                  style={[styles.selectorButton, showAccountDropdown === 'to' && styles.selectorButtonActive, isMirroredFromOrg && { opacity: 0.6 }]}
                   onPress={() => toggleAccountDropdown('to')}
                 >
                   <Text style={styles.selectorButtonText} numberOfLines={1}>
                     {accounts.find(a => a.id === transferToId)?.name || 'Select Account'}
                   </Text>
-                  <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
+                  <ChevronDown size={16} color={colors.textLight} style={{ position: 'absolute', right: 12 }} />
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
@@ -515,7 +600,7 @@ export function AddTransactionModal({
                   <Text style={styles.selectorButtonText} numberOfLines={1}>
                     {category || 'Select Category'}
                   </Text>
-                  <ChevronDown size={16} color={Colors.textLight} style={{ position: 'absolute', right: 12 }} />
+                  <ChevronDown size={16} color={colors.textLight} style={{ position: 'absolute', right: 12 }} />
                 </TouchableOpacity>
               )}
             </View>
@@ -524,7 +609,7 @@ export function AddTransactionModal({
           {/* Floating Dropdown Lists */}
           {showAccountDropdown === 'from' && (
               <ScrollView style={styles.dropdownList} nestedScrollEnabled showsVerticalScrollIndicator={true} keyboardShouldPersistTaps="handled">
-                {accounts.map((a) => (
+                {selectableAccounts.map((a) => (
                   <TouchableOpacity
                     key={a.id}
                     style={[styles.dropdownItem, accountId === a.id && styles.dropdownItemActive]}
@@ -534,7 +619,7 @@ export function AddTransactionModal({
                     }}
                   >
                     <Text style={[styles.dropdownItemText, accountId === a.id && styles.dropdownItemTextActive]}>
-                      {a.name}
+                      {a.name}{a.linked_org_id ? ' (Linked)' : ''}
                     </Text>
                     <Text style={styles.dropdownItemSubText}>
                       {formatCurrency(accountBalances[a.id] || 0, currency)}
@@ -589,7 +674,7 @@ export function AddTransactionModal({
                     setTimeout(() => toggleCategoryDropdown(), 50);
                   }}
                 >
-                  <Plus size={14} color={Colors.primary} />
+                  <Plus size={14} color={colors.primary} />
                   <Text style={styles.dropdownItemAddText}>+ Custom</Text>
                 </TouchableOpacity>
               </ScrollView>
@@ -601,7 +686,7 @@ export function AddTransactionModal({
               <TextInput
                 style={styles.customCategoryInput}
                 placeholder="Enter custom category name..."
-                placeholderTextColor={Colors.textDim}
+                placeholderTextColor={colors.textDim}
                 value={customCatName}
                 onChangeText={setCustomCatName}
                 maxLength={60}
@@ -620,27 +705,69 @@ export function AddTransactionModal({
           )}
 
           <View pointerEvents={selectorExpanded ? 'none' : 'auto'}>
+            <View style={styles.dateHeaderRow}>
+              <Text style={styles.inputLabel}>Date</Text>
+              <View style={styles.dateQuickRow}>
+                <TouchableOpacity
+                  style={styles.dateQuickChip}
+                  onPress={() => setTxDate(formatLocalDateInput(new Date().toISOString()))}
+                >
+                  <Text style={styles.dateQuickChipText}>Today</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.dateQuickChip}
+                  onPress={() => {
+                    const y = new Date();
+                    y.setDate(y.getDate() - 1);
+                    setTxDate(formatLocalDateInput(y.toISOString()));
+                  }}
+                >
+                  <Text style={styles.dateQuickChipText}>Yesterday</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <TextInput
+              style={styles.input}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.textDim}
+              value={txDate}
+              onChangeText={setTxDate}
+              maxLength={10}
+              keyboardType="numbers-and-punctuation"
+            />
+
             <Text style={styles.inputLabel}>Notes (Optional)</Text>
           <TextInput
             style={styles.input}
             placeholder="Optional notes..."
-            placeholderTextColor={Colors.textDim}
+            placeholderTextColor={colors.textDim}
             value={notes}
             onChangeText={setNotes}
           />
 
           <TouchableOpacity
             style={styles.saveButton}
-            onPress={handleAddTransaction}
+            onPress={handleSubmitTransaction}
             disabled={saving}
           >
             <Text style={styles.saveButtonText}>
-              {saving ? 'Saving...' : 'Save Transaction'}
+              {saving ? 'Saving...' : transaction ? 'Save Changes' : 'Save Transaction'}
             </Text>
           </TouchableOpacity>
 
+          {transaction && (
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={handleDeleteTransaction}
+              disabled={saving}
+            >
+              <Trash2 size={18} color={colors.error} style={{ marginRight: 8 }} />
+              <Text style={styles.deleteButtonText}>Delete Transaction</Text>
+            </TouchableOpacity>
+          )}
+
           {/* Keypad */}
-          <View style={[styles.keypad, { marginTop: 24, minHeight: 260 }]}>
+          <View style={[styles.keypad, { marginTop: 24, minHeight: 260 }, isMirroredFromOrg && { opacity: 0.45 }]}>
             {[
               ['+', '7', '8', '9'],
               ['-', '4', '5', '6'],
@@ -651,6 +778,7 @@ export function AddTransactionModal({
                 {row.map((btn) => (
                   <TouchableOpacity
                     key={btn}
+                    disabled={isMirroredFromOrg}
                     style={[
                       styles.keypadBtn,
                       ['+', '-', '×', '÷'].includes(btn) && styles.keypadBtnOp,
@@ -674,23 +802,25 @@ export function AddTransactionModal({
         </ScrollView>
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: Tokens.spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: colors.border,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -703,7 +833,7 @@ const styles = StyleSheet.create({
   },
   typeSelectorRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderRadius: Tokens.radius.full,
     padding: 4,
     marginBottom: Tokens.spacing.md,
@@ -715,28 +845,28 @@ const styles = StyleSheet.create({
     borderRadius: Tokens.radius.full,
   },
   typeBtnActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
   },
   typeBtnText: {
     fontSize: 14,
     fontWeight: '600',
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   typeBtnTextActive: {
-    color: Colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
   },
   inputLabel: {
     ...Tokens.typography.caption,
-    color: Colors.textLight,
+    color: colors.textLight,
     marginBottom: 6,
     marginTop: 10,
   },
   input: {
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderRadius: Tokens.radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
-    color: Colors.textWhite,
+    borderColor: colors.border,
+    color: colors.textWhite,
     paddingHorizontal: Tokens.spacing.md,
     paddingVertical: 10,
     fontSize: 15,
@@ -758,16 +888,16 @@ const styles = StyleSheet.create({
   },
   selectorLabel: {
     ...Tokens.typography.caption,
-    color: Colors.textLight,
+    color: colors.textLight,
     marginBottom: 6,
     textAlign: 'center',
     height: 18,
   },
   selectorButton: {
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderRadius: Tokens.radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     paddingHorizontal: 12,
     paddingVertical: 12,
     flexDirection: 'row',
@@ -777,24 +907,24 @@ const styles = StyleSheet.create({
   },
   selectorButtonText: {
     fontSize: 14,
-    color: Colors.textWhite,
+    color: colors.textWhite,
     fontWeight: '600',
     flex: 1,
     textAlign: 'center',
   },
   selectorButtonActive: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primary + '15',
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '15',
   },
   dropdownList: {
     position: 'absolute',
     top: '100%',
     left: 0,
     right: 0,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Tokens.radius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     marginTop: 4,
     maxHeight: 250,
     overflow: 'hidden',
@@ -812,22 +942,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.surfaceElevated,
+    borderBottomColor: colors.surfaceElevated,
   },
   dropdownItemActive: {
-    backgroundColor: Colors.secondary + '20',
+    backgroundColor: colors.secondary + '20',
   },
   dropdownItemText: {
     fontSize: 14,
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   dropdownItemTextActive: {
-    color: Colors.secondary,
+    color: colors.secondary,
     fontWeight: '600',
   },
   dropdownItemSubText: {
     fontSize: 12,
-    color: Colors.textDim,
+    color: colors.textDim,
   },
   dropdownItemAdd: {
     paddingHorizontal: 12,
@@ -838,42 +968,58 @@ const styles = StyleSheet.create({
   },
   dropdownItemAddText: {
     fontSize: 14,
-    color: Colors.primary,
+    color: colors.primary,
     fontWeight: '600',
   },
   accPill: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: Tokens.radius.full,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     marginRight: 8,
     marginBottom: 8,
   },
   accPillActive: {
-    backgroundColor: Colors.secondary,
-    borderColor: Colors.secondary,
+    backgroundColor: colors.secondary,
+    borderColor: colors.secondary,
   },
   accPillText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   accPillTextActive: {
-    color: Colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
   },
   saveButton: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     borderRadius: Tokens.radius.md,
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: Tokens.spacing.lg,
   },
+  deleteButton: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: Tokens.radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  deleteButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.error,
+  },
   saveButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: Colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
   },
   categoryPillsContainer: {
     flexDirection: 'row',
@@ -885,29 +1031,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: Tokens.radius.full,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   categoryPillSelected: {
-    backgroundColor: Colors.primaryDark,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primaryDark,
+    borderColor: colors.primary,
   },
   categoryPillText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   categoryPillTextSelected: {
-    color: Colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
   },
   addCategoryPill: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: Tokens.radius.full,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -915,7 +1061,7 @@ const styles = StyleSheet.create({
   addCategoryPillText: {
     fontSize: 13,
     fontWeight: '600',
-    color: Colors.primary,
+    color: colors.primary,
   },
   customCategoryRow: {
     flexDirection: 'row',
@@ -925,17 +1071,17 @@ const styles = StyleSheet.create({
   },
   customCategoryInput: {
     flex: 1,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Tokens.radius.md,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     paddingHorizontal: Tokens.spacing.md,
     paddingVertical: 10,
-    color: Colors.textWhite,
+    color: colors.textWhite,
     fontSize: 14,
   },
   customCategoryAddBtn: {
-    backgroundColor: Colors.primaryDark,
+    backgroundColor: colors.primaryDark,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: Tokens.radius.md,
@@ -944,7 +1090,7 @@ const styles = StyleSheet.create({
   },
   customCategoryAddBtnText: {
     ...Tokens.typography.body,
-    color: Colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
     fontWeight: '700',
   },
   formScroll: {
@@ -952,10 +1098,10 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   displayArea: {
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderRadius: Tokens.radius.lg,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     padding: Tokens.spacing.md,
     marginBottom: Tokens.spacing.md,
     marginTop: Tokens.spacing.xs,
@@ -971,12 +1117,12 @@ const styles = StyleSheet.create({
   },
   evalText: {
     fontSize: 14,
-    color: Colors.textDim,
+    color: colors.textDim,
     marginTop: 2,
   },
   backspaceBtn: {
     padding: Tokens.spacing.sm,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Tokens.radius.md,
   },
   warningRow: {
@@ -986,17 +1132,17 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: colors.border,
   },
   warningText: {
     fontSize: 12,
-    color: Colors.offline,
+    color: colors.offline,
   },
   keypad: {
     marginTop: Tokens.spacing.md,
     paddingTop: Tokens.spacing.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: colors.border,
     gap: 8,
   },
   keypadRow: {
@@ -1005,31 +1151,53 @@ const styles = StyleSheet.create({
   },
   keypadBtn: {
     flex: 1,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     height: 54,
     borderRadius: Tokens.radius.md,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   keypadBtnOp: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
   },
   keypadBtnEq: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primaryDark,
+    backgroundColor: colors.primary,
+    borderColor: colors.primaryDark,
   },
   keypadBtnText: {
     fontSize: 22,
     fontWeight: '500',
-    color: Colors.textWhite,
+    color: colors.textWhite,
   },
   keypadBtnTextOp: {
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   keypadBtnTextEq: {
-    color: Colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
     fontWeight: '700',
+  },
+  dateHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateQuickRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  dateQuickChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Tokens.radius.full,
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  dateQuickChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
   },
 });

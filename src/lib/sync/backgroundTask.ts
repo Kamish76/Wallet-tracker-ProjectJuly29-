@@ -9,28 +9,26 @@ TaskManager.defineTask(BACKGROUND_SYNC_TASK, async () => {
     const result = await SyncEngine.syncNow();
     if (result.success) {
       console.log('[BackgroundTask] Background sync successful.');
-      return BackgroundTask.BackgroundFetchResult ? BackgroundTask.BackgroundFetchResult.NewData : 1;
+      return BackgroundTask.BackgroundTaskResult.Success;
     } else {
       console.log('[BackgroundTask] Background sync skipped or failed:', result.error);
-      return BackgroundTask.BackgroundFetchResult ? BackgroundTask.BackgroundFetchResult.NoData : 2;
+      return BackgroundTask.BackgroundTaskResult.Success;
     }
   } catch (error) {
     console.error('[BackgroundTask] Error in background sync:', error);
-    return BackgroundTask.BackgroundFetchResult ? BackgroundTask.BackgroundFetchResult.Failed : 3;
+    return BackgroundTask.BackgroundTaskResult.Failed;
   }
 });
 
 export async function registerBackgroundSync() {
   try {
     const settings = await SyncEngine.getSettings();
-    const intervalSeconds = (settings.intervalMinutes || 15) * 60;
+    const intervalMinutes = Math.max(15, settings.intervalMinutes || 15);
     
     await BackgroundTask.registerTaskAsync(BACKGROUND_SYNC_TASK, {
-      minimumInterval: intervalSeconds,
-      stopOnTerminate: false, // android only,
-      startOnBoot: true, // android only
+      minimumInterval: intervalMinutes,
     });
-    console.log(`[BackgroundTask] Background sync task registered with interval ${intervalSeconds}s.`);
+    console.log(`[BackgroundTask] Background sync task registered with interval ${intervalMinutes}m.`);
   } catch (err) {
     console.error('[BackgroundTask] Failed to register background sync task:', err);
   }

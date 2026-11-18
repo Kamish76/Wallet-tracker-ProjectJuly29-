@@ -4,7 +4,7 @@ import { MaterialTopTabs } from '@/components/MaterialTopTabs';
 import { View, Text, StyleSheet } from 'react-native';
 import { LayoutDashboard, ArrowRightLeft, Wallet, Settings, Wifi, WifiOff, RefreshCw } from 'lucide-react-native';
 import { SyncEngine } from '@/lib/sync/syncEngine';
-import { Colors } from '@/theme/colors';
+import { useTheme } from '@/theme/ThemeContext';
 import { Tokens } from '@/theme/tokens';
 
 export default function TabsLayout() {
@@ -12,9 +12,12 @@ export default function TabsLayout() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
 
+  const { colors, isDark } = useTheme();
+
   const insets = useSafeAreaInsets();
   const paddingBottom = Math.max(14, insets.bottom);
-  const tabBarHeight = 68 + paddingBottom; // base content height (72 - 14 = 58)
+  const syncBarPaddingTop = Math.max(insets.top, 6);
+  const tabBarHeight = 68 + paddingBottom;
 
   useEffect(() => {
     const unsubscribe = SyncEngine.subscribe((count, syncing) => {
@@ -26,24 +29,35 @@ export default function TabsLayout() {
   }, []);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Top Sync Bar Indicator */}
-      <View style={styles.syncBar}>
+      <View
+        style={[
+          styles.syncBar,
+          {
+            paddingTop: syncBarPaddingTop,
+            backgroundColor: colors.surface,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
         <View style={styles.syncStatusLeft}>
           {isOnline ? (
-            <Wifi size={14} color={Colors.online} />
+            <Wifi size={14} color={colors.online} />
           ) : (
-            <WifiOff size={14} color={Colors.offline} />
+            <WifiOff size={14} color={colors.offline} />
           )}
-          <Text style={styles.syncStatusText}>
+          <Text style={[styles.syncStatusText, { color: colors.textMuted }]}>
             {isOnline ? 'Connected' : 'Offline Mode (Local Storage)'}
           </Text>
         </View>
         <View style={styles.syncStatusRight}>
-          {isSyncing && <RefreshCw size={14} color={Colors.syncing} />}
+          {isSyncing && <RefreshCw size={14} color={colors.syncing} />}
           {pendingCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{pendingCount} pending</Text>
+            <View style={[styles.badge, { backgroundColor: colors.primary }]}>
+              <Text style={[styles.badgeText, { color: isDark ? colors.background : '#FFFFFF' }]}>
+                {pendingCount} pending
+              </Text>
             </View>
           )}
         </View>
@@ -52,9 +66,17 @@ export default function TabsLayout() {
       <MaterialTopTabs
         tabBarPosition="bottom"
         screenOptions={{
-          tabBarStyle: [styles.tabBar, { height: tabBarHeight, paddingBottom }],
-          tabBarActiveTintColor: Colors.primary,
-          tabBarInactiveTintColor: Colors.textDim,
+          tabBarStyle: [
+            styles.tabBar,
+            {
+              height: tabBarHeight,
+              paddingBottom,
+              backgroundColor: colors.surface,
+              borderTopColor: colors.border,
+            },
+          ],
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.textDim,
           tabBarLabelStyle: styles.tabLabel,
           tabBarShowIcon: true,
           tabBarIndicatorStyle: { backgroundColor: 'transparent' }, // hide top indicator line
@@ -98,17 +120,14 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   syncBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
     paddingHorizontal: Tokens.spacing.md,
     paddingVertical: 6,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
   },
   syncStatusLeft: {
     flexDirection: 'row',
@@ -116,7 +135,6 @@ const styles = StyleSheet.create({
   },
   syncStatusText: {
     ...Tokens.typography.caption,
-    color: Colors.textMuted,
     marginLeft: 6,
   },
   syncStatusRight: {
@@ -124,7 +142,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   badge: {
-    backgroundColor: Colors.primary,
     borderRadius: Tokens.radius.full,
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -133,12 +150,9 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 11,
     fontWeight: '700',
-    color: Colors.background,
   },
   tabBar: {
-    backgroundColor: Colors.surface,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
     paddingTop: 8,
   },
   tabLabel: {

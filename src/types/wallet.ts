@@ -4,6 +4,8 @@ export type WalletAccount = {
   name: string;
   starting_value: number;
   is_active: boolean;
+  linked_org_id?: string | null;
+  linked_org_balance?: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -29,6 +31,7 @@ export type WalletTransaction = {
   created_at: string;
   occurred_at: string;
   is_initial?: boolean;
+  mirrored_from_tx_id?: string | null;
   // Local offline status flags
   sync_status?: 'synced' | 'pending' | 'syncing' | 'failed';
   local_id?: string;

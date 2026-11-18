@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -13,7 +13,8 @@ import {
   Platform,
 } from 'react-native';
 import { X, Plus, Trash2, Edit2, Check, Tag } from 'lucide-react-native';
-import { Colors } from '@/theme/colors';
+import { Colors, type ThemeColors } from '@/theme/colors';
+import { useTheme } from '@/theme/ThemeContext';
 import { Tokens } from '@/theme/tokens';
 import { OfflineDatabase } from '@/lib/database/sqlite';
 import { SyncEngine } from '@/lib/sync/syncEngine';
@@ -35,6 +36,9 @@ export function ManageCategoriesModal({
   orgId,
   onCategoriesChanged,
 }: ManageCategoriesModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   const [activeTab, setActiveTab] = useState<'income' | 'expense'>('expense');
   const [categories, setCategories] = useState<WalletCategory[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -236,7 +240,7 @@ export function ManageCategoriesModal({
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.titleRow}>
-              <Tag size={20} color={Colors.primary} />
+              <Tag size={20} color={colors.primary} />
               <Text style={styles.title}>Transaction Categories</Text>
             </View>
             <TouchableOpacity
@@ -244,7 +248,7 @@ export function ManageCategoriesModal({
               style={styles.closeButton}
               accessibilityLabel="Close modal"
             >
-              <X size={22} color={Colors.textMuted} />
+              <X size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -289,7 +293,7 @@ export function ManageCategoriesModal({
             <TextInput
               style={styles.input}
               placeholder={`Add new ${activeTab} category...`}
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={colors.textMuted}
               value={newCategoryName}
               onChangeText={setNewCategoryName}
               maxLength={60}
@@ -305,9 +309,9 @@ export function ManageCategoriesModal({
               disabled={!newCategoryName.trim() || isAdding}
             >
               {isAdding ? (
-                <ActivityIndicator size="small" color={Colors.textWhite} />
+                <ActivityIndicator size="small" color={colors.textWhite} />
               ) : (
-                <Plus size={20} color={Colors.textWhite} />
+                <Plus size={20} color={colors.textWhite} />
               )}
             </TouchableOpacity>
           </View>
@@ -315,7 +319,7 @@ export function ManageCategoriesModal({
           {/* Categories List */}
           {loading ? (
             <View style={styles.loaderContainer}>
-              <ActivityIndicator size="large" color={Colors.primary} />
+              <ActivityIndicator size="large" color={colors.primary} />
             </View>
           ) : (
             <ScrollView
@@ -350,13 +354,13 @@ export function ManageCategoriesModal({
                             onPress={() => handleSaveEdit(cat)}
                             disabled={isSavingEdit}
                           >
-                            <Check size={18} color={Colors.success} />
+                            <Check size={18} color={colors.income} />
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={styles.actionButton}
                             onPress={() => setEditingId(null)}
                           >
-                            <X size={18} color={Colors.textMuted} />
+                            <X size={18} color={colors.textMuted} />
                           </TouchableOpacity>
                         </View>
                       ) : (
@@ -368,8 +372,8 @@ export function ManageCategoriesModal({
                                 {
                                   backgroundColor:
                                     activeTab === 'income'
-                                      ? Colors.income
-                                      : Colors.expense,
+                                      ? colors.income
+                                      : colors.expense,
                                 },
                               ]}
                             />
@@ -389,14 +393,14 @@ export function ManageCategoriesModal({
                               onPress={() => handleStartEdit(cat)}
                               accessibilityLabel={`Edit ${cat.display_name}`}
                             >
-                              <Edit2 size={16} color={Colors.textMuted} />
+                              <Edit2 size={16} color={colors.textMuted} />
                             </TouchableOpacity>
                             <TouchableOpacity
                               style={styles.actionButton}
                               onPress={() => handleDeleteCategory(cat)}
                               accessibilityLabel={`Delete ${cat.display_name}`}
                             >
-                              <Trash2 size={16} color={Colors.error} />
+                              <Trash2 size={16} color={colors.error} />
                             </TouchableOpacity>
                           </View>
                         </>
@@ -420,10 +424,11 @@ export function ManageCategoriesModal({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: Colors.overlay,
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     paddingHorizontal: Tokens.spacing.md,
   },
@@ -452,12 +457,12 @@ const styles = StyleSheet.create({
   },
   tabsContainer: {
     flexDirection: 'row',
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Tokens.radius.md,
     padding: 3,
     marginBottom: Tokens.spacing.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   tabButton: {
     flex: 1,
@@ -466,22 +471,22 @@ const styles = StyleSheet.create({
     borderRadius: Tokens.radius.sm,
   },
   activeExpenseTab: {
-    backgroundColor: Colors.expenseBg,
-    borderColor: Colors.expense,
+    backgroundColor: colors.expenseBg,
+    borderColor: colors.expense,
     borderWidth: 1,
   },
   activeIncomeTab: {
-    backgroundColor: Colors.incomeBg,
-    borderColor: Colors.income,
+    backgroundColor: colors.incomeBg,
+    borderColor: colors.income,
     borderWidth: 1,
   },
   tabText: {
     ...Tokens.typography.caption,
     fontSize: 14,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   activeTabText: {
-    color: Colors.textWhite,
+    color: colors.textWhite,
     fontWeight: '700',
   },
   addFormContainer: {
@@ -492,17 +497,17 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderRadius: Tokens.radius.md,
     paddingHorizontal: Tokens.spacing.md,
     paddingVertical: Tokens.spacing.sm,
-    color: Colors.textWhite,
+    color: colors.textWhite,
     fontSize: 15,
   },
   addButton: {
-    backgroundColor: Colors.primaryDark,
+    backgroundColor: colors.primaryDark,
     width: 44,
     height: 44,
     borderRadius: Tokens.radius.md,
@@ -531,19 +536,19 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     ...Tokens.typography.body,
-    color: Colors.textMuted,
+    color: colors.textMuted,
     textAlign: 'center',
   },
   categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: Tokens.radius.md,
     paddingHorizontal: Tokens.spacing.md,
     paddingVertical: Tokens.spacing.sm,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   categoryLabelRow: {
     flexDirection: 'row',
@@ -558,21 +563,21 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     ...Tokens.typography.body,
-    color: Colors.textWhite,
+    color: colors.textWhite,
     flex: 1,
   },
   presetBadge: {
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     paddingHorizontal: Tokens.spacing.sm,
     paddingVertical: 2,
     borderRadius: Tokens.radius.full,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   presetText: {
     ...Tokens.typography.caption,
     fontSize: 10,
-    color: Colors.textMuted,
+    color: colors.textMuted,
   },
   rowActions: {
     flexDirection: 'row',
@@ -590,32 +595,32 @@ const styles = StyleSheet.create({
   },
   editInput: {
     flex: 1,
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     borderRadius: Tokens.radius.sm,
     paddingHorizontal: Tokens.spacing.sm,
     paddingVertical: 6,
-    color: Colors.textWhite,
+    color: colors.textWhite,
     fontSize: 14,
   },
   footer: {
     marginTop: Tokens.spacing.md,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: colors.border,
     paddingTop: Tokens.spacing.md,
   },
   doneButton: {
-    backgroundColor: Colors.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     borderRadius: Tokens.radius.md,
     paddingVertical: Tokens.spacing.sm,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   doneText: {
     ...Tokens.typography.body,
-    color: Colors.textWhite,
+    color: colors.textWhite,
     fontWeight: '600',
   },
 });

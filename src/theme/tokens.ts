@@ -1,4 +1,58 @@
-import { Colors } from './colors';
+import { Colors, type ThemeColors } from './colors';
+
+export function getTokens(colors: ThemeColors = Colors) {
+  return {
+    spacing: Tokens.spacing,
+    radius: Tokens.radius,
+    typography: {
+      h1: {
+        fontSize: 28,
+        fontWeight: '700' as const,
+        color: colors.textWhite,
+        letterSpacing: -0.5,
+      },
+      h2: {
+        fontSize: 22,
+        fontWeight: '600' as const,
+        color: colors.textWhite,
+      },
+      h3: {
+        fontSize: 18,
+        fontWeight: '600' as const,
+        color: colors.textWhite,
+      },
+      body: {
+        fontSize: 15,
+        fontWeight: '400' as const,
+        color: colors.textLight,
+      },
+      caption: {
+        fontSize: 12,
+        fontWeight: '500' as const,
+        color: colors.textMuted,
+      },
+    },
+    card: {
+      backgroundColor: colors.surfaceCard,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 16,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
+      elevation: 5,
+    },
+    glassCard: {
+      backgroundColor: colors.glassBg,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.borderGlow,
+      padding: 16,
+    },
+  };
+}
 
 export const Tokens = {
   spacing: {

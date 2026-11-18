@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Edit2, Trash2 } from 'lucide-react-native';
-import { Colors } from '@/theme/colors';
+import { useTheme } from '@/theme/ThemeContext';
 import { Tokens } from '@/theme/tokens';
 import { getAccountBadgeText } from '@/lib/utils/balance';
 import { formatCurrency } from '@/lib/utils/currency';
@@ -17,76 +17,79 @@ interface TransactionCardProps {
 
 export const TransactionCard = memo(
   ({ tx, accounts, onEdit, onDelete, currency = 'USD' }: TransactionCardProps) => {
+    const { colors, isDark } = useTheme();
+
+    const txColor =
+      tx.type === 'income'
+        ? colors.income
+        : tx.type === 'transfer'
+        ? colors.transfer
+        : colors.expense;
+
     return (
       <TouchableOpacity
-        style={styles.txCard}
+        style={[
+          styles.txCard,
+          {
+            backgroundColor: colors.surfaceCard,
+            borderColor: colors.border,
+            shadowColor: isDark ? colors.primary : 'rgba(0, 0, 0, 0.05)',
+          },
+        ]}
         onPress={() => onEdit(tx)}
         activeOpacity={0.7}
       >
         <View style={styles.txLeft}>
-          <View
-            style={[
-              styles.txTypeDot,
-              {
-                backgroundColor:
-                  tx.type === 'income'
-                    ? Colors.income
-                    : tx.type === 'transfer'
-                    ? Colors.transfer
-                    : Colors.expense,
-              },
-            ]}
-          />
+          <View style={[styles.txTypeDot, { backgroundColor: txColor }]} />
           <View>
-            <Text style={styles.txCategory}>
+            <Text style={[styles.txCategory, { color: colors.textWhite }]}>
               {tx.category || (tx.type === 'transfer' ? 'Transfer' : 'Uncategorized')}
             </Text>
-            <Text style={styles.txDate}>
-              <Text style={{ color: Colors.textLight, fontWeight: '600' }}>
+            <Text style={[styles.txDate, { color: colors.textMuted }]}>
+              <Text style={{ color: colors.textLight, fontWeight: '600' }}>
                 {getAccountBadgeText(tx, accounts)}
               </Text>
               {' • '}
               {new Date(tx.occurred_at).toLocaleDateString()}
+              {tx.mirrored_from_tx_id ? ' • Mirrored from Org' : ''}
               {tx.sync_status === 'pending' ? ' • (Offline Pending)' : ''}
             </Text>
           </View>
         </View>
         <View style={styles.txRight}>
-          <Text
-            style={[
-              styles.txAmount,
-              {
-                color:
-                  tx.type === 'income'
-                    ? Colors.income
-                    : tx.type === 'transfer'
-                    ? Colors.transfer
-                    : Colors.expense,
-              },
-            ]}
-          >
+          <Text style={[styles.txAmount, { color: txColor }]}>
             {tx.type === 'income' ? '+' : '-'}{formatCurrency(Number(tx.amount), currency)}
           </Text>
           <View style={styles.txActions}>
             <TouchableOpacity
-              style={styles.actionBtn}
+              style={[
+                styles.actionBtn,
+                { backgroundColor: colors.surfaceElevated, borderColor: colors.border },
+              ]}
               onPress={(e) => {
                 e.stopPropagation();
                 onEdit(tx);
               }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Edit2 size={15} color={Colors.textMuted} />
+              <Edit2 size={15} color={colors.textMuted} />
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.actionBtn, { marginLeft: 14 }]}
+              style={[
+                styles.actionBtn,
+                {
+                  marginLeft: 14,
+                  backgroundColor: colors.surfaceElevated,
+                  borderColor: colors.border,
+                },
+              ]}
               onPress={(e) => {
                 e.stopPropagation();
                 onDelete(tx);
               }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Trash2 size={15} color={Colors.error} />
+              <Trash2 size={15} color={colors.error} />
             </TouchableOpacity>
           </View>
         </View>
@@ -94,8 +97,6 @@ export const TransactionCard = memo(
     );
   },
   (prevProps, nextProps) => {
-    // Custom comparison for React.memo
-    // We assume accounts array reference doesn't change unless accounts change, but to be safe:
     return (
       prevProps.tx.id === nextProps.tx.id &&
       prevProps.tx.amount === nextProps.tx.amount &&
@@ -103,6 +104,8 @@ export const TransactionCard = memo(
       prevProps.tx.occurred_at === nextProps.tx.occurred_at &&
       prevProps.tx.sync_status === nextProps.tx.sync_status &&
       prevProps.tx.type === nextProps.tx.type &&
+      prevProps.tx.description === nextProps.tx.description &&
+      prevProps.tx.mirrored_from_tx_id === nextProps.tx.mirrored_from_tx_id &&
       prevProps.accounts === nextProps.accounts &&
       prevProps.currency === nextProps.currency
     );
@@ -132,12 +135,10 @@ const styles = StyleSheet.create({
   txCategory: {
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.textWhite,
     marginBottom: 2,
   },
   txDate: {
     fontSize: 13,
-    color: Colors.textMuted,
   },
   txRight: {
     alignItems: 'flex-end',
@@ -155,9 +156,7 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     padding: 4,
-    backgroundColor: Colors.surfaceElevated,
     borderRadius: Tokens.radius.sm,
     borderWidth: 1,
-    borderColor: Colors.border,
   },
 });

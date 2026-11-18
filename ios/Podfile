@@ -59,5 +59,19 @@ target 'OrgWallet' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |build_config|
+        deployment_target = build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
+        if deployment_target && Gem::Version.new(deployment_target) < Gem::Version.new('15.1')
+          build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+        end
+      end
+      target.build_phases.each do |phase|
+        if phase.respond_to?(:shell_script) && phase.shell_script&.include?('bash -l -c "$PODS_TARGET_SRCROOT')
+          phase.shell_script = phase.shell_script.gsub('bash -l -c "$PODS_TARGET_SRCROOT', 'bash -l "$PODS_TARGET_SRCROOT')
+        end
+      end
+    end
   end
 end

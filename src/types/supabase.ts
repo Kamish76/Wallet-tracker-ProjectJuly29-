@@ -15,6 +15,7 @@ export interface Database {
           name: string;
           description: string | null;
           owner_id: string;
+          currency?: string | null;
           is_wallet?: boolean | null;
           created_at: string;
           updated_at: string;
@@ -24,6 +25,7 @@ export interface Database {
           name: string;
           description?: string | null;
           owner_id: string;
+          currency?: string | null;
           is_wallet?: boolean | null;
           created_at?: string;
           updated_at?: string;
@@ -33,6 +35,7 @@ export interface Database {
           name?: string;
           description?: string | null;
           owner_id?: string;
+          currency?: string | null;
           is_wallet?: boolean | null;
           created_at?: string;
           updated_at?: string;
@@ -73,6 +76,8 @@ export interface Database {
           name: string;
           starting_value: number;
           is_active: boolean;
+          linked_org_id?: string | null;
+          linked_org_balance?: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -82,6 +87,8 @@ export interface Database {
           name: string;
           starting_value?: number;
           is_active?: boolean;
+          linked_org_id?: string | null;
+          linked_org_balance?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -91,6 +98,8 @@ export interface Database {
           name?: string;
           starting_value?: number;
           is_active?: boolean;
+          linked_org_id?: string | null;
+          linked_org_balance?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -144,6 +153,7 @@ export interface Database {
           funded_by_type: string | null;
           funded_by_user_id: string | null;
           updated_by_user_id: string | null;
+          mirrored_from_tx_id?: string | null;
         };
         Insert: {
           id?: string;
@@ -162,6 +172,7 @@ export interface Database {
           funded_by_type?: string | null;
           funded_by_user_id?: string | null;
           updated_by_user_id?: string | null;
+          mirrored_from_tx_id?: string | null;
         };
         Update: {
           id?: string;
@@ -180,6 +191,43 @@ export interface Database {
           funded_by_type?: string | null;
           funded_by_user_id?: string | null;
           updated_by_user_id?: string | null;
+          mirrored_from_tx_id?: string | null;
+        };
+        Relationships: [];
+      };
+      account_deletion_requests: {
+        Row: {
+          id: string;
+          user_id: string;
+          email: string;
+          reason: string | null;
+          status: 'pending' | 'cancelled' | 'completed';
+          requested_at: string;
+          scheduled_deletion_at: string;
+          cancelled_at: string | null;
+          completed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          email: string;
+          reason?: string | null;
+          status?: 'pending' | 'cancelled' | 'completed';
+          requested_at?: string;
+          scheduled_deletion_at?: string;
+          cancelled_at?: string | null;
+          completed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          email?: string;
+          reason?: string | null;
+          status?: 'pending' | 'cancelled' | 'completed';
+          requested_at?: string;
+          scheduled_deletion_at?: string;
+          cancelled_at?: string | null;
+          completed_at?: string | null;
         };
         Relationships: [];
       };

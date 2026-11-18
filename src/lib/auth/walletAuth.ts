@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, supabaseAdmin } from '@/lib/supabase/client';
 import { SyncEngine } from '@/lib/sync/syncEngine';
 import { OfflineDatabase } from '@/lib/database/sqlite';
+import { WidgetService } from '@/lib/widget/widgetService';
 import { RateLimiter, RateLimitPolicies } from '@/lib/security/rateLimiter';
 import { SecurityService } from '@/lib/security/securityService';
 import type { Organization } from '@/types/wallet';
@@ -106,9 +107,10 @@ export class WalletAuthService {
   }
 
   public static async clearAllUserData() {
-    this.clearCache();
+    await this.clearCache();
     try {
       await OfflineDatabase.clearAllData();
+      await WidgetService.clearWidgetData();
       console.log('[WalletAuthService] All local user database data and caches cleared.');
     } catch (err) {
       console.error('[WalletAuthService] Failed to clear local database:', err);
@@ -211,6 +213,48 @@ export class WalletAuthService {
     return data.session;
   }
 
+  // --- Linkable Business Organizations ---
+  public static async getLinkableOrganizations(
+    userId: string,
+    walletOrgId?: string | null
+  ): Promise<{ id: string; name: string }[]> {
+    try {
+      const [{ data: ownedOrgs }, { data: memberRows }] = await Promise.all([
+        supabaseAdmin
+          .from('organizations')
+          .select('id, name, description, is_wallet')
+          .eq('owner_id', userId),
+        supabaseAdmin
+          .from('organization_members')
+          .select('organization_id')
+          .eq('user_id', userId)
+          .eq('is_active', true),
+      ]);
+
+      const memberOrgIds = (memberRows || []).map((m) => m.organization_id);
+      let memberOrgs: any[] = [];
+      if (memberOrgIds.length > 0) {
+        const { data: mOrgs } = await supabaseAdmin
+          .from('organizations')
+          .select('id, name, description, is_wallet')
+          .in('id', memberOrgIds);
+        if (mOrgs) memberOrgs = mOrgs;
+      }
+
+      const orgMap = new Map<string, { id: string; name: string }>();
+      for (const org of [...(ownedOrgs || []), ...memberOrgs]) {
+        if (org.id === walletOrgId) continue;
+        if (isWalletOrganization(org.description, (org as any).is_wallet)) continue;
+        orgMap.set(org.id, { id: org.id, name: org.name });
+      }
+
+      return Array.from(orgMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    } catch (e) {
+      console.warn('[WalletAuthService] Failed to fetch linkable organizations:', e);
+      return [];
+    }
+  }
+
   // --- Rule #1: Organization Membership Guard Verification ---
   public static async verifyWalletOrgAccess(organizationId: string, userId: string): Promise<boolean> {
     // 1. Check if user is owner of the organization using maybeSingle()
@@ -238,15 +282,15 @@ export class WalletAuthService {
   // --- Rule #2: Personal Wallet Resolution & Auto-Spawning ---
   public static async resolveUserWallet(userId: string): Promise<{ organizationId: string; currency: string; createdNew: boolean }> {
     const cachedId = await this.getCachedOrgIdAsync();
-    const cachedCurrency = await this.getCachedCurrencyAsync();
     if (cachedId) {
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
-        SyncEngine.firstTimeAutoSync(cachedId).catch((e) =>
+        await SyncEngine.firstTimeAutoSync(cachedId).catch((e) =>
           console.warn('[WalletAuthService] Background sync failed:', e)
         );
       }
-      return { organizationId: cachedId, currency: cachedCurrency, createdNew: false };
+      const latestCurrency = await this.getCachedCurrencyAsync();
+      return { organizationId: cachedId, currency: latestCurrency, createdNew: false };
     }
 
     // Step 1: Query organizations owned by this specific userId OR where userId is an active member
@@ -286,11 +330,12 @@ export class WalletAuthService {
           await this.updateCachedCurrency(org.currency || 'USD');
           if (!this.hasPulledInitialData) {
             this.hasPulledInitialData = true;
-            SyncEngine.firstTimeAutoSync(org.id).catch((e) =>
+            await SyncEngine.firstTimeAutoSync(org.id).catch((e) =>
               console.warn('[WalletAuthService] Background sync failed:', e)
             );
           }
-          return { organizationId: org.id, currency: org.currency || 'USD', createdNew: false };
+          const latestCurrency = await this.getCachedCurrencyAsync();
+          return { organizationId: org.id, currency: latestCurrency || org.currency || 'USD', createdNew: false };
         }
       }
 
@@ -301,11 +346,12 @@ export class WalletAuthService {
       await this.updateCachedCurrency(firstOrg.currency || 'USD');
       if (!this.hasPulledInitialData) {
         this.hasPulledInitialData = true;
-        SyncEngine.firstTimeAutoSync(firstOrg.id).catch((e) =>
+        await SyncEngine.firstTimeAutoSync(firstOrg.id).catch((e) =>
           console.warn('[WalletAuthService] Background sync failed:', e)
         );
       }
-      return { organizationId: firstOrg.id, currency: firstOrg.currency || 'USD', createdNew: false };
+      const latestCurrency = await this.getCachedCurrencyAsync();
+      return { organizationId: firstOrg.id, currency: latestCurrency || firstOrg.currency || 'USD', createdNew: false };
     }
 
     // Step 2: Rule #2 Auto-Create Personal Wallet & Spawn Default 'Cash' Account (Only if user has 0 organizations!)
@@ -364,4 +410,70 @@ export class WalletAuthService {
     );
     return { organizationId: newOrg.id, currency: 'USD', createdNew: true };
   }
+
+  // --- Account Deletion Support (Apple 5.1.1(v) & Google Play Store Compliance) ---
+  public static async getPendingAccountDeletion(userId: string) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('account_deletion_requests')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'pending')
+        .order('requested_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('[WalletAuthService] Notice checking account deletion request:', error.message);
+        return null;
+      }
+      return data;
+    } catch (e) {
+      console.warn('[WalletAuthService] Exception checking account deletion request:', e);
+      return null;
+    }
+  }
+
+  public static async requestAccountDeletion(userId: string, email: string, reason?: string) {
+    const scheduledDate = new Date();
+    scheduledDate.setDate(scheduledDate.getDate() + 30);
+
+    const { data, error } = await supabaseAdmin
+      .from('account_deletion_requests')
+      .insert({
+        user_id: userId,
+        email: email || '',
+        reason: reason || 'In-app account deletion requested from OrgWallet mobile',
+        status: 'pending',
+        scheduled_deletion_at: scheduledDate.toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  public static async cancelAccountDeletion(requestId: string) {
+    const { data, error } = await supabaseAdmin
+      .from('account_deletion_requests')
+      .update({
+        status: 'cancelled',
+        cancelled_at: new Date().toISOString(),
+      })
+      .eq('id', requestId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
 }
+
+// Auto-scrub local database on SIGNED_OUT or session invalidation/expiry
+supabase.auth.onAuthStateChange(async (event, session) => {
+  if (event === 'SIGNED_OUT' || (event === 'TOKEN_REFRESHED' && !session)) {
+    console.log('[WalletAuthService] Session ended or expired. Scrubbing local user database.');
+    await WalletAuthService.clearAllUserData();
+  }
+});

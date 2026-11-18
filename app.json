@@ -4,7 +4,7 @@
     "slug": "orgwallet",
     "version": "0.4.4",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "scheme": "orgwallet",
     "icon": "./assets/icon.png",
     "splash": {
@@ -18,7 +18,16 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kamish.orgfinance",
-      "icon": "./assets/icon.png"
+      "buildNumber": "9",
+      "icon": "./assets/icon.png",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.kamish.orgfinance"
+        ]
+      }
     },
     "android": {
       "package": "com.kamish.orgfinance",
@@ -38,6 +47,7 @@
       "expo-router",
       "expo-secure-store",
       "expo-web-browser",
+      "./plugins/withIosWidget",
       [
         "react-native-android-widget",
         {
