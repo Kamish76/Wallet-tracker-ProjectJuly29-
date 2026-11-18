@@ -12,7 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { X, Plus, Delete, AlertCircle, ChevronDown } from 'lucide-react-native';
+import { X, Plus, Delete, Trash2, AlertCircle, ChevronDown } from 'lucide-react-native';
 
 import { evaluateMathExpression } from '@/lib/utils/math';
 import { OfflineDatabase } from '@/lib/database/sqlite';
@@ -36,6 +36,7 @@ interface AddTransactionModalProps {
   userId: string | null;
   accounts: WalletAccount[];
   initialType?: TransactionType;
+  transaction?: WalletTransaction | null;
   currency?: string;
 }
 
@@ -47,10 +48,14 @@ export function AddTransactionModal({
   userId,
   accounts,
   initialType,
+  transaction,
   currency = 'USD',
 }: AddTransactionModalProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
+  const isEditMode = transaction !== undefined;
+  const effectiveVisible = isEditMode ? Boolean(visible && transaction) : visible;
 
   const [txType, setTxType] = useState<TransactionType>('expense_personal');
   const [displayExpr, setDisplayExpr] = useState('0');
@@ -70,22 +75,18 @@ export function AddTransactionModal({
   const [prevInitialType, setPrevInitialType] = useState(initialType);
 
   const selectableAccounts = useMemo(
-    () => (txType === 'transfer' ? accounts : accounts.filter((a) => !a.linked_org_id)),
-    [accounts, txType]
+    () =>
+      txType === 'transfer'
+        ? accounts
+        : accounts.filter((a) => !a.linked_org_id || (Boolean(transaction) && a.id === transaction?.account_id)),
+    [accounts, txType, transaction]
   );
 
   // Sync initialType without triggering a second render pass during animation
-  if (initialType !== prevInitialType) {
+  if (!isEditMode && initialType !== prevInitialType) {
     setPrevInitialType(initialType);
     if (initialType) setTxType(initialType);
   }
-
-  // DEBUG LOGGING
-  useEffect(() => {
-    console.log('[AddTransactionModal] State changed:', {
-      visible, txType, showAccountDropdown, showCategoryDropdown
-    });
-  }, [visible, txType, showAccountDropdown, showCategoryDropdown]);
 
   const leftExpanded = showAccountDropdown === 'from';
   const rightExpanded = showAccountDropdown === 'to' || showCategoryDropdown;
@@ -107,14 +108,12 @@ export function AddTransactionModal({
   };
 
   const toggleAccountDropdown = (type: 'from' | 'to' | null) => {
-    console.log('[AddTransactionModal] toggleAccountDropdown called with:', type);
     const nextState = showAccountDropdown === type ? null : type;
     setShowAccountDropdown(nextState);
     if (nextState) setShowCategoryDropdown(false);
   };
 
   const toggleCategoryDropdown = () => {
-    console.log('[AddTransactionModal] toggleCategoryDropdown called');
     const nextState = !showCategoryDropdown;
     setShowCategoryDropdown(nextState);
     if (nextState) setShowAccountDropdown(null);
@@ -125,7 +124,6 @@ export function AddTransactionModal({
   }, [displayExpr]);
 
   const handleKeypadPress = (key: string) => {
-    console.log('[AddTransactionModal] Keypad pressed:', key, 'Current display:', displayExpr);
     if (key === '=') {
       const val = evaluateMathExpression(displayExpr);
       setDisplayExpr(String(val));
@@ -160,9 +158,18 @@ export function AddTransactionModal({
   };
 
   useEffect(() => {
-    if (visible) {
-      setTxDate(formatLocalDateInput(new Date().toISOString()));
-      console.log(`[Perf Tracker] 'AddTransactionModal' rendering visible=true at ${new Date().toISOString()} (${Date.now()})`);
+    if (effectiveVisible) {
+      if (transaction) {
+        setTxType(transaction.type);
+        setDisplayExpr(String(transaction.amount ?? '0'));
+        setAccountId(transaction.account_id ?? (accounts[0]?.id || ''));
+        setTransferToId(transaction.transfer_to_account_id ?? '');
+        setCategory(transaction.category ?? '');
+        setNotes(transaction.description ?? '');
+        setTxDate(formatLocalDateInput(transaction.occurred_at));
+      } else {
+        setTxDate(formatLocalDateInput(new Date().toISOString()));
+      }
     } else {
       setShowCustomCatInput(false);
       setCustomCatName('');
@@ -171,25 +178,31 @@ export function AddTransactionModal({
       setDisplayExpr('0');
       setCategory('');
       setNotes('');
-      setTxDate(formatLocalDateInput(new Date().toISOString()));
+      setTxDate(isEditMode ? '' : formatLocalDateInput(new Date().toISOString()));
       setTransferToId('');
     }
-  }, [visible]);
+  }, [effectiveVisible, isEditMode, transaction, accounts]);
 
   useEffect(() => {
-    if (visible) {
-      if (selectableAccounts.length > 0 && !selectableAccounts.some((a) => a.id === accountId)) {
-        setAccountId(selectableAccounts[0].id);
-      } else if (selectableAccounts.length === 0 && accountId !== '') {
-        setAccountId('');
-      }
+    if (!effectiveVisible) return;
+    if (
+      transaction?.account_id &&
+      !accountId &&
+      selectableAccounts.some((a) => a.id === transaction.account_id)
+    ) {
+      setAccountId(transaction.account_id);
+      return;
     }
-  }, [visible, selectableAccounts, accountId]);
+    if (selectableAccounts.length > 0 && !selectableAccounts.some((a) => a.id === accountId)) {
+      setAccountId(selectableAccounts[0].id);
+    } else if (selectableAccounts.length === 0 && accountId !== '') {
+      setAccountId('');
+    }
+  }, [effectiveVisible, selectableAccounts, accountId, transaction]);
 
   useEffect(() => {
-    if (visible && orgId) {
+    if (effectiveVisible && orgId) {
       InteractionManager.runAfterInteractions(() => {
-        console.log(`[Perf Tracker] 'AddTransactionModal' starting background data fetch after animations at ${new Date().toISOString()} (${Date.now()})`);
         OfflineDatabase.getCategories(orgId).then(setCategories).catch(() => {});
         OfflineDatabase.getAccountsWithBalances(orgId).then((accBalances) => {
           const balances: Record<string, number> = {};
@@ -197,11 +210,10 @@ export function AddTransactionModal({
             balances[b.id] = b.current_balance;
           }
           setAccountBalances(balances);
-          console.log(`[Perf Tracker] 'AddTransactionModal' finished background data fetch at ${new Date().toISOString()} (${Date.now()})`);
         }).catch(() => {});
       });
     }
-  }, [visible, orgId, accounts]);
+  }, [effectiveVisible, orgId, accounts]);
 
   const filteredCategories = categories.filter((c) => {
     if (txType === 'income') return c.aliases?.includes('type:income');
@@ -256,14 +268,18 @@ export function AddTransactionModal({
     setDisplayExpr('0');
     setCategory('');
     setNotes('');
-    setTxDate(formatLocalDateInput(new Date().toISOString()));
+    if (!isEditMode) {
+      setTxDate(formatLocalDateInput(new Date().toISOString()));
+    }
     setTransferToId('');
     setShowCustomCatInput(false);
     setCustomCatName('');
   };
 
-  const handleAddTransaction = async () => {
+  const handleSubmitTransaction = async () => {
     if (!orgId || !userId) return;
+    if (isEditMode && !transaction) return;
+
     const evaluatedAmount = evaluateMathExpression(displayExpr);
     const valValidation = SecurityService.validateAmount(Math.abs(evaluatedAmount));
     if (!valValidation.isValid) {
@@ -276,7 +292,8 @@ export function AddTransactionModal({
       return;
     }
     const chosenSource = accounts.find((a) => a.id === accountId);
-    if (txType !== 'transfer' && chosenSource?.linked_org_id) {
+    const isKeepingExistingLinkedAccount = Boolean(transaction && accountId === transaction.account_id);
+    if (txType !== 'transfer' && chosenSource?.linked_org_id && !isKeepingExistingLinkedAccount) {
       Alert.alert(
         'Linked Account Read-Only',
         'Direct income and expenses are disabled on linked organization accounts. Use Transfer or record entries in the linked organization.'
@@ -306,55 +323,117 @@ export function AddTransactionModal({
       }
       await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
 
-      const newTxId = generateUUID();
-      const now = new Date().toISOString();
-      const occurredAt = trimmedDate ? mergeDateWithOriginalTime(trimmedDate, now) : now;
-      const newTx: WalletTransaction = {
-        id: newTxId,
-        organization_id: orgId,
-        user_id: userId,
-        type: txType,
-        amount: finalAmount,
-        account_id: accountId,
-        transfer_to_account_id: txType === 'transfer' ? transferToId : null,
-        category: SecurityService.sanitizeText(category, 60) || null,
-        description: SecurityService.sanitizeText(notes, 200) || null,
-        created_at: now,
-        occurred_at: occurredAt,
-        sync_status: 'pending',
-      };
+      const sanitizedCategory = SecurityService.sanitizeText(category, 60) || null;
+      const sanitizedNotes = SecurityService.sanitizeText(notes, 200) || null;
 
-      // 1. Write immediately to local SQLite for instant offline reactivity
-      await OfflineDatabase.upsertTransaction(newTx, 'pending');
-
-      // 2. Enqueue mutation in offline sync queue
-      await OfflineDatabase.enqueueMutation('CREATE_TRANSACTION', newTx);
-
-      // 3. Trigger background sync if online
-      if (SyncEngine.getOnlineStatus()) {
-        SyncEngine.syncNow(orgId);
+      if (transaction) {
+        const updatedTx: WalletTransaction = {
+          ...transaction,
+          type: txType,
+          amount: finalAmount,
+          account_id: accountId,
+          transfer_to_account_id: txType === 'transfer' ? (transferToId || null) : null,
+          category: sanitizedCategory,
+          description: sanitizedNotes,
+          occurred_at: trimmedDate
+            ? mergeDateWithOriginalTime(trimmedDate, transaction.occurred_at)
+            : transaction.occurred_at,
+          sync_status: 'pending',
+        };
+        await OfflineDatabase.upsertTransaction(updatedTx, 'pending');
+        await OfflineDatabase.enqueueMutation('UPDATE_TRANSACTION', updatedTx);
+      } else {
+        const now = new Date().toISOString();
+        const newTx: WalletTransaction = {
+          id: generateUUID(),
+          organization_id: orgId,
+          user_id: userId,
+          type: txType,
+          amount: finalAmount,
+          account_id: accountId,
+          transfer_to_account_id: txType === 'transfer' ? transferToId : null,
+          category: sanitizedCategory,
+          description: sanitizedNotes,
+          created_at: now,
+          occurred_at: trimmedDate ? mergeDateWithOriginalTime(trimmedDate, now) : now,
+          sync_status: 'pending',
+        };
+        // 1. Write immediately to local SQLite for instant offline reactivity
+        await OfflineDatabase.upsertTransaction(newTx, 'pending');
+        // 2. Enqueue mutation in offline sync queue
+        await OfflineDatabase.enqueueMutation('CREATE_TRANSACTION', newTx);
       }
 
-      // 4. Update Android home screen widget immediately
+      if (SyncEngine.getOnlineStatus()) {
+        SyncEngine.syncNow(orgId).catch(() => {});
+      }
       WidgetService.refreshWidgetData(orgId || undefined).catch(() => {});
 
       resetForm();
       onSuccess();
       onClose();
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to add transaction.');
+      Alert.alert(
+        'Error',
+        e?.message || (transaction ? 'Failed to update transaction.' : 'Failed to add transaction.')
+      );
     } finally {
       setSaving(false);
     }
   };
 
+  const handleDeleteTransaction = () => {
+    if (!orgId || !transaction) return;
+    Alert.alert(
+      'Delete Transaction',
+      'Are you sure you want to delete this transaction? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setSaving(true);
+            try {
+              const rateStatus = await RateLimiter.checkLimit('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+              if (!rateStatus.allowed) {
+                Alert.alert('Rate Limit Exceeded', `Too many attempts. Please try again in ${rateStatus.retryAfterSeconds}s.`);
+                setSaving(false);
+                return;
+              }
+              await RateLimiter.recordAttempt('mutation:create', RateLimitPolicies.MUTATION_CREATE);
+
+              await OfflineDatabase.deleteTransaction(transaction.id, orgId);
+              await OfflineDatabase.enqueueMutation('DELETE_TRANSACTION', {
+                id: transaction.id,
+                organization_id: orgId,
+              });
+
+              if (SyncEngine.getOnlineStatus()) {
+                SyncEngine.syncNow(orgId).catch(() => {});
+              }
+              WidgetService.refreshWidgetData(orgId || undefined).catch(() => {});
+
+              onSuccess();
+              onClose();
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Failed to delete transaction.');
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={effectiveVisible} animationType="slide" transparent>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.modalOverlay}>
         <View style={[styles.modalCard, { maxHeight: '95%' }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add Transaction</Text>
+            <Text style={styles.modalTitle}>{transaction ? 'Edit Transaction' : 'Add Transaction'}</Text>
             <TouchableOpacity
               onPress={() => {
                 resetForm();
@@ -635,13 +714,24 @@ export function AddTransactionModal({
 
           <TouchableOpacity
             style={styles.saveButton}
-            onPress={handleAddTransaction}
+            onPress={handleSubmitTransaction}
             disabled={saving}
           >
             <Text style={styles.saveButtonText}>
-              {saving ? 'Saving...' : 'Save Transaction'}
+              {saving ? 'Saving...' : transaction ? 'Save Changes' : 'Save Transaction'}
             </Text>
           </TouchableOpacity>
+
+          {transaction && (
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={handleDeleteTransaction}
+              disabled={saving}
+            >
+              <Trash2 size={18} color={colors.error} style={{ marginRight: 8 }} />
+              <Text style={styles.deleteButtonText}>Delete Transaction</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Keypad */}
           <View style={[styles.keypad, { marginTop: 24, minHeight: 260 }]}>
@@ -875,6 +965,22 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: Tokens.spacing.lg,
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: Tokens.radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  deleteButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.error,
   },
   saveButtonText: {
     fontSize: 16,
